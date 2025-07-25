@@ -1,0 +1,16 @@
+Loaded file: unstructured_document.tex
+Extracted 35 chunks into 10 sections
+Assigned chunks to document skeleton
+Skipped empty section: Title
+Skipped empty section: Author
+Processed section: Abstract -> outputs/20250725_084618/Abstract.tex
+Processed section: 1. Introduction -> outputs/20250725_084618/1_Introduction.tex
+Processed section: 2. Theoretical Foundations -> outputs/20250725_084618/2_Theoretical_Foundations.tex
+Processed section: 3. The Proposed Framework: DAWF -> outputs/20250725_084618/3_The_Proposed_Framework:_DAWF.tex
+Processed section: 4. Input Data and Database -> outputs/20250725_084618/4_Input_Data_and_Database.tex
+Processed section: 5. Implementation Details -> outputs/20250725_084618/5_Implementation_Details.tex
+Processed section: 6. Testing and Verification -> outputs/20250725_084618/6_Testing_and_Verification.tex
+Processed section: 7. Experimental Results and Discussion -> outputs/20250725_084618/7_Experimental_Results_and_Discussion.tex
+Processed section: 8. Conclusion -> outputs/20250725_084618/8_Conclusion.tex
+Processed section: References -> outputs/20250725_084618/References.tex
+Final document saved: outputs/20250725_084618/final_document.tex

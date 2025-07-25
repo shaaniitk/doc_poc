@@ -1,0 +1,16 @@
+.*
+.env
+*.pdf
+*.jpg
+*.png
+*.aux
+*.log
+*.pyc
+*.sh
+
+# Only include these file types
+!*.tex
+!*.txt
+!*.md
+!*.py
+!.gitignore

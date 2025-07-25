@@ -1,0 +1,15 @@
+=== FIXED CHUNKING: Improved regex-based parsing ===
+Reading source file: unstructured_document.tex
+[DEBUG] Extracted 44 chunks from LaTeX document.
+[DEBUG] Chunk 0: type=paragraph, parent_section=Abstract
+[DEBUG] Chunk 1: type=paragraph, parent_section=Introduction
+[DEBUG] Chunk 2: type=figure, parent_section=Introduction
+[DEBUG] Chunk 3: type=paragraph, parent_section=Theoretical Foundations
+[DEBUG] Chunk 4: type=equation, parent_section=Theoretical Foundations
+[DEBUG] Chunk 5: type=paragraph, parent_section=Theoretical Foundations
+[DEBUG] Chunk 6: type=equation, parent_section=Theoretical Foundations
+[DEBUG] Chunk 7: type=paragraph, parent_section=Theoretical Foundations
+[DEBUG] Chunk 8: type=table, parent_section=Theoretical Foundations
+[DEBUG] Chunk 9: type=paragraph, parent_section=Theoretical Foundations
+[DEBUG] Grouped into 10 sections: ['Abstract', 'Introduction', 'Theoretical Foundations', 'The Proposed Framework: DAWF', 'Input Data and Database', 'Implementation Details', 'Testing and Verification', 'Experimental Results and Discussion', 'Conclusion', 'References']
+[INFO] Fixed chunked output written to fixed_chunked_output.md

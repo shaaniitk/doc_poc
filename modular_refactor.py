@@ -1,0 +1,140 @@
+"""Main modular document refactoring script"""
+import sys
+import os
+sys.path.append(os.path.dirname(__file__))
+
+from modules.file_loader import load_latex_file
+from modules.chunker import extract_latex_sections, group_chunks_by_section, llm_enhance_chunking
+from modules.section_mapper import assign_chunks_to_skeleton, get_section_prompt
+from modules.llm_handler import ContextualLLMHandler
+from modules.advanced_processing import AdvancedProcessor
+from modules.intelligent_aggregation import IntelligentAggregator
+from modules.output_manager import OutputManager
+from modules.output_formatter import OutputFormatter
+from config import CHUNKING_STRATEGIES, DOCUMENT_TEMPLATES
+
+def main(source=None, chunking_strategy="semantic", output_format="latex", template="academic_paper"):
+    # Configuration
+    if source and (source.startswith('http') or source.startswith('arxiv:')):
+        from modules.tex_downloader import TexDownloader
+        downloader = TexDownloader()
+        
+        if source.startswith('arxiv:'):
+            arxiv_id = source.replace('arxiv:', '')
+            source_file = downloader.download_arxiv_source(arxiv_id)
+        else:
+            source_file = downloader.download_tex_file(source)
+        
+        # Preprocess downloaded file
+        source_file = downloader.preprocess_tex(source_file)
+        print(f"Downloaded and preprocessed: {source_file}")
+    else:
+        source_file = source or "unstructured_document.tex"
+    
+    # Initialize modules
+    llm_handler = ContextualLLMHandler()
+    advanced_processor = AdvancedProcessor()
+    aggregator = IntelligentAggregator()
+    output_manager = OutputManager()
+    formatter = OutputFormatter(output_format)
+    log_entries = []
+    
+    try:
+        # 1. Load file
+        print("Loading LaTeX file...")
+        content = load_latex_file(source_file)
+        log_entries.append(f"Loaded file: {source_file}")
+        
+        # 2. Extract and chunk
+        print("Extracting and chunking content...")
+        chunks = extract_latex_sections(content)
+        
+        # 2.5. Enhance chunking with LLM
+        print("Enhancing chunks with LLM...")
+        from modules.chunker import llm_enhance_chunking
+        enhanced_chunks = llm_enhance_chunking(chunks)
+        
+        grouped_chunks = group_chunks_by_section(enhanced_chunks)
+        log_entries.append(f"Extracted {len(chunks)} chunks, enhanced to {len(enhanced_chunks)} chunks into {len(grouped_chunks)} sections")
+        
+        # 3. Assign to skeleton
+        print("Assigning chunks to document skeleton...")
+        assignments = assign_chunks_to_skeleton(grouped_chunks)
+        log_entries.append("Assigned chunks to document skeleton")
+        
+        # 4. Process with LLM
+        print("Processing sections with LLM...")
+        processed_sections = {}
+        
+        for section_name, section_chunks in assignments.items():
+            if section_chunks:
+                print(f"  Processing: {section_name}")
+                
+                # Combine content for this section
+                combined_content = '\n\n'.join([chunk['content'] for chunk in section_chunks])
+                
+                # Get section prompt
+                prompt = get_section_prompt(section_name)
+                
+                # Advanced multi-pass processing
+                result = advanced_processor.multi_pass_processing(
+                    section_chunks, section_name, prompt
+                )
+                
+                # Update global context
+                advanced_processor.update_global_context(section_name, result)
+                
+                # Save section output
+                section_path = output_manager.save_section_output(section_name, result)
+                processed_sections[section_name] = result
+                
+                log_entries.append(f"Processed section: {section_name} -> {section_path}")
+            else:
+                log_entries.append(f"Skipped empty section: {section_name}")
+        
+        # 5. Intelligent aggregation
+        print("Optimizing document coherence...")
+        optimized_sections = aggregator.coherence_optimization(processed_sections)
+        consistent_sections = aggregator.terminology_consistency(optimized_sections)
+        
+        # Quality assurance
+        print("Running quality assurance...")
+        qa_results = aggregator.quality_assurance_pass('\n'.join(consistent_sections.values()))
+        
+        # 6. Aggregate final document
+        print("Aggregating final document...")
+        final_path = output_manager.aggregate_document(consistent_sections)
+        log_entries.append(f"Final document saved: {final_path}")
+        log_entries.append(f"QA Results: {qa_results}")
+        
+        # 6. Save processing log
+        log_path = output_manager.save_processing_log(log_entries)
+        
+        print(f"\nProcessing complete!")
+        print(f"Final document: {final_path}")
+        print(f"Processing log: {log_path}")
+        print(f"Session outputs: {output_manager.session_path}")
+        print(f"Quality assurance completed with {len(qa_results)} checks")
+        
+    except Exception as e:
+        error_msg = f"Error: {str(e)}"
+        print(error_msg)
+        log_entries.append(error_msg)
+        output_manager.save_processing_log(log_entries)
+
+if __name__ == "__main__":
+    import sys
+    
+    # Command line usage examples:
+    # python modular_refactor.py
+    # python modular_refactor.py --source https://example.com/paper.tex
+    # python modular_refactor.py --source arxiv:2301.12345
+    
+    source = None
+    if len(sys.argv) > 1:
+        if '--source' in sys.argv:
+            idx = sys.argv.index('--source')
+            if idx + 1 < len(sys.argv):
+                source = sys.argv[idx + 1]
+    
+    main(source=source)
