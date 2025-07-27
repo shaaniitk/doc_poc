@@ -1,0 +1,14 @@
+Loaded file: bitcoin_whitepaper.tex
+Extracted 28 chunks, enhanced to 28 chunks into 13 sections
+Assigned chunks to document skeleton
+Skipped empty section: Title
+Processed section: Abstract -> outputs/20250726_075040/Abstract.tex
+Processed section: 1. Introduction -> outputs/20250726_075040/1_Introduction.tex
+Skipped empty section: 2. Literature Review
+Skipped empty section: 3. Methodology
+Skipped empty section: 4. Results
+Skipped empty section: 5. Discussion
+Skipped empty section: 6. Conclusion
+Skipped empty section: References
+Final document saved: outputs/20250726_075040/final_document.tex
+QA Results: {'completeness': '% Error: MISTRAL_API_KEY not set', 'consistency': '% Error: MISTRAL_API_KEY not set', 'clarity': '% Error: MISTRAL_API_KEY not set', 'technical_accuracy': '% Error: MISTRAL_API_KEY not set'}

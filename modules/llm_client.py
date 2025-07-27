@@ -1,7 +1,11 @@
 """Unified LLM client supporting multiple providers"""
 import os
 import requests
+from dotenv import load_dotenv
 from config import LLM_CONFIG, LLM_PROVIDERS
+
+# Load environment variables
+load_dotenv()
 
 class UnifiedLLMClient:
     def __init__(self, provider=None, model=None):

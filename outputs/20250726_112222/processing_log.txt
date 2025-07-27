@@ -1,0 +1,19 @@
+Loaded file: bitcoin_whitepaper.tex
+Extracted 92 chunks, enhanced to 92 chunks into 13 sections
+Assigned chunks to document skeleton
+Processed section: Summary -> outputs/20250726_112222/Summary.tex
+Processed section: Abstract -> outputs/20250726_112222/Abstract.tex
+Processed section: 1. Introduction -> outputs/20250726_112222/1_Introduction.tex
+Processed section: 2. Transactions -> outputs/20250726_112222/2_Transactions.tex
+Processed section: 3. Timestamp Server -> outputs/20250726_112222/3_Timestamp_Server.tex
+Processed section: 4. Proof-of-Work -> outputs/20250726_112222/4_Proof-of-Work.tex
+Processed section: 5. Network -> outputs/20250726_112222/5_Network.tex
+Processed section: 6. Incentive -> outputs/20250726_112222/6_Incentive.tex
+Processed section: 7. Reclaiming Disk Space -> outputs/20250726_112222/7_Reclaiming_Disk_Space.tex
+Processed section: 8. Simplified Payment Verification -> outputs/20250726_112222/8_Simplified_Payment_Verification.tex
+Processed section: 9. Combining and Splitting Value -> outputs/20250726_112222/9_Combining_and_Splitting_Value.tex
+Processed section: 10. Privacy -> outputs/20250726_112222/10_Privacy.tex
+Processed section: 11. Major and Minor Assumptions -> outputs/20250726_112222/11_Major_and_Minor_Assumptions.tex
+Processed section: 12. Calculations -> outputs/20250726_112222/12_Calculations.tex
+Processed section: 13. Conclusion -> outputs/20250726_112222/13_Conclusion.tex
+Final document saved: outputs/20250726_112222/final_document.tex

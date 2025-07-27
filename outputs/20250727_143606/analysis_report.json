@@ -1,0 +1,63 @@
+{
+  "processing_summary": {
+    "session_id": "20250727_143606",
+    "timestamp": "2025-07-27T14:36:06.933969",
+    "total_chunks": 0,
+    "processing_steps": 25
+  },
+  "content_analysis": {
+    "equations_preserved": {
+      "original": 7,
+      "final": 7,
+      "preserved": true
+    },
+    "code_blocks_preserved": {
+      "original": 1,
+      "final": 1,
+      "preserved": true
+    },
+    "lists_preserved": {
+      "original": 1,
+      "final": 1,
+      "preserved": true
+    },
+    "figures_preserved": {
+      "original": 0,
+      "final": 0,
+      "preserved": true
+    },
+    "character_count": {
+      "original": 0,
+      "final": 20318,
+      "change_percent": 0
+    }
+  },
+  "chunk_tracking": {},
+  "processing_log": [
+    "[14:36:06] Starting document combination: bitcoin_whitepaper.tex + blockchain_security.tex",
+    "[14:36:06] Loaded documents: 19531 + 6063 characters",
+    "[14:36:06] Extracted chunks: 37 + 29",
+    "[14:36:06] Combined using smart_merge strategy: 20 sections",
+    "[14:36:06] Saved section: Abstract -> outputs/20250727_143606/Abstract.tex",
+    "[14:36:06] Saved section: Introduction -> outputs/20250727_143606/Introduction.tex",
+    "[14:36:06] Saved section: Conclusion -> outputs/20250727_143606/Conclusion.tex",
+    "[14:36:06] Saved section: Privacy -> outputs/20250727_143606/Privacy.tex",
+    "[14:36:06] Saved section: Vulnerability Assessment -> outputs/20250727_143606/Vulnerability_Assessment.tex",
+    "[14:36:06] Saved section: Security Recommendations -> outputs/20250727_143606/Security_Recommendations.tex",
+    "[14:36:06] Saved section: Security Models -> outputs/20250727_143606/Security_Models.tex",
+    "[14:36:06] Saved section: Simplified Payment Verification -> outputs/20250727_143606/Simplified_Payment_Verification.tex",
+    "[14:36:06] Saved section: Reclaiming Disk Space -> outputs/20250727_143606/Reclaiming_Disk_Space.tex",
+    "[14:36:06] Saved section: Cryptographic Foundations -> outputs/20250727_143606/Cryptographic_Foundations.tex",
+    "[14:36:06] Saved section: Combining and Splitting Value -> outputs/20250727_143606/Combining_and_Splitting_Value.tex",
+    "[14:36:06] Saved section: Network -> outputs/20250727_143606/Network.tex",
+    "[14:36:06] Saved section: Timestamp Server -> outputs/20250727_143606/Timestamp_Server.tex",
+    "[14:36:06] Saved section: Proof-of-Work -> outputs/20250727_143606/Proof-of-Work.tex",
+    "[14:36:06] Saved section: Security Metrics -> outputs/20250727_143606/Security_Metrics.tex",
+    "[14:36:06] Saved section: Consensus Mechanisms -> outputs/20250727_143606/Consensus_Mechanisms.tex",
+    "[14:36:06] Saved section: Transactions -> outputs/20250727_143606/Transactions.tex",
+    "[14:36:06] Saved section: Incentive -> outputs/20250727_143606/Incentive.tex",
+    "[14:36:06] Saved section: Calculations -> outputs/20250727_143606/Calculations.tex",
+    "[14:36:06] Saved section: Attack Vectors -> outputs/20250727_143606/Attack_Vectors.tex",
+    "[14:36:06] Final document saved: outputs/20250727_143606/final_document.tex"
+  ]
+}

@@ -1,0 +1,12 @@
+The security of blockchain systems relies heavily on cryptographic primitives. Hash functions provide data integrity and immutability, while digital signatures ensure authentication and non-repudiation.
+
+\begin{equation}
+H(x) = y \text{ where } |y| = n \text{ bits}
+\end{equation}
+
+equation
+
+The cryptographic hash function must satisfy three key properties:
+1. Pre-image resistance: Given $y$, it is computationally infeasible to find $x$ such that $H(x) = y$
+2. Second pre-image resistance: Given $x$, it is computationally infeasible to find $x'$ such that $H(x) = H(x')$
+3. Collision resistance: It is computationally infeasible to find $x$ and $x'$ such that $H(x) = H(x')$

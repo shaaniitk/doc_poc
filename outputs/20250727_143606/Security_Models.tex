@@ -1,0 +1,29 @@
+We define several security models for blockchain analysis:
+
+\begin{equation}
+\text{Security Level} = \min(\text{Cryptographic Security}, \text{Consensus Security}, \text{Network Security})
+\end{equation}
+
+equation
+
+The overall security of a blockchain system is determined by its weakest component. This necessitates a holistic approach to security analysis.
+
+\textbf{Byzantine Fault Tolerance Model:}
+The system can tolerate up to $f$ Byzantine (malicious) nodes out of $3f+1$ total nodes.
+
+\begin{equation}
+\text{Safety} \Leftrightarrow \text{Honest nodes} \geq 2f+1
+\end{equation}
+
+equation
+
+\textbf{Proof-of-Work Security Model:}
+Security is based on computational power majority assumption.
+
+\begin{equation}
+P_{\text{attack success}} = \left(\frac{q}{p}\right)^k
+\end{equation}
+
+equation
+
+Where $q$ is attacker hash rate, $p$ is honest hash rate, and $k$ is confirmation depth.

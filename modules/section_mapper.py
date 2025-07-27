@@ -1,7 +1,11 @@
 """Section mapping and assignment module"""
 
 from config import DOCUMENT_TEMPLATES
-DOCUMENT_SKELETON = DOCUMENT_TEMPLATES["academic_paper"]
+
+def get_document_skeleton(template_name="bitcoin_paper"):
+    return DOCUMENT_TEMPLATES.get(template_name, DOCUMENT_TEMPLATES["bitcoin_paper"])
+
+DOCUMENT_SKELETON = get_document_skeleton()
 
 def assign_chunks_to_skeleton(grouped_chunks):
     """Assign grouped chunks to skeleton sections"""
@@ -10,15 +14,40 @@ def assign_chunks_to_skeleton(grouped_chunks):
     section_mapping = {
         'Abstract': 'Abstract',
         'Introduction': '1. Introduction', 
-        'Theoretical Foundations': '2. Theoretical Foundations',
-        'The Proposed Framework: DAWF': '3. The Proposed Framework: DAWF',
-        'Input Data and Database': '4. Input Data and Database',
-        'Implementation Details': '5. Implementation Details',
-        'Testing and Verification': '6. Testing and Verification',
-        'Experimental Results and Discussion': '7. Experimental Results and Discussion',
-        'Conclusion': '8. Conclusion',
-        'References': 'References'
+        'Transactions': '2. Transactions',
+        'Timestamp Server': '3. Timestamp Server',
+        'Proof-of-Work': '4. Proof-of-Work',
+        'Network': '5. Network',
+        'Incentive': '6. Incentive',
+        'Reclaiming Disk Space': '7. Reclaiming Disk Space',
+        'Simplified Payment Verification': '8. Simplified Payment Verification',
+        'Combining and Splitting Value': '9. Combining and Splitting Value',
+        'Privacy': '10. Privacy',
+        'Calculations': '12. Calculations',
+        'Conclusion': '13. Conclusion'
     }
+    
+    # Special handling for Summary section - gets all content
+    if 'Summary' in assignments:
+        all_content = []
+        for section_chunks in grouped_chunks.values():
+            for chunk in section_chunks:
+                all_content.append(chunk['content'])
+        assignments['Summary'].append({
+            'content': '\n\n'.join(all_content),
+            'parent_section': 'All Sections'
+        })
+    
+    # Special handling for Major and Minor Assumptions - gets all content
+    if '11. Major and Minor Assumptions' in assignments:
+        all_content = []
+        for section_chunks in grouped_chunks.values():
+            for chunk in section_chunks:
+                all_content.append(chunk['content'])
+        assignments['11. Major and Minor Assumptions'].append({
+            'content': '\n\n'.join(all_content),
+            'parent_section': 'All Sections'
+        })
     
     for source_section, target_section in section_mapping.items():
         if source_section in grouped_chunks and target_section in assignments:

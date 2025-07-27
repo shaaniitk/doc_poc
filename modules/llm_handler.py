@@ -1,16 +1,14 @@
 """LLM interaction module with context management"""
 import os
 from .llm_client import UnifiedLLMClient
+from .format_enforcer import FormatEnforcer
 
 class ContextualLLMHandler:
-    def __init__(self):
-        self.document_context = ""
-        self.section_contexts = {}
-        
-    def __init__(self, provider=None, model=None):
+    def __init__(self, provider=None, model=None, output_format="latex"):
         self.document_context = ""
         self.section_contexts = {}
         self.llm_client = UnifiedLLMClient(provider, model)
+        self.format_enforcer = FormatEnforcer(output_format)
     
     def process_section(self, section_name, content, prompt):
         """Process a section with contextual awareness"""
@@ -24,13 +22,19 @@ class ContextualLLMHandler:
         context = "\n\n".join(context_parts)
         
         # Build full prompt
-        full_prompt = f"{context}\n\nTASK: {prompt}\n\nPreserve all LaTeX environments exactly.\n\nCONTENT:\n{content}"
+        full_prompt = f"{context}\n\nTASK: {prompt}\n\nIMPORTANT: Output ONLY section content, no document structure. Preserve all LaTeX environments exactly.\n\nCONTENT:\n{content}"
         
-        from config import CHUNKING_PROMPTS
-        system_prompt = CHUNKING_PROMPTS['system_prompt']
+        system_prompt = self.format_enforcer.get_system_prompt()
         
         # Get LLM response
-        result = self.llm_client.call_llm(full_prompt, system_prompt)
+        raw_result = self.llm_client.call_llm(full_prompt, system_prompt)
+        
+        # Enforce format
+        result, format_issues = self.format_enforcer.enforce_format(raw_result)
+        
+        # Log format issues if any
+        if format_issues:
+            print(f"Format issues in {section_name}: {format_issues}")
         
         # Update contexts
         self.update_context(section_name, result)
@@ -48,3 +52,7 @@ class ContextualLLMHandler:
             self.document_context = self.document_context[-500:] + f"\n{section_name}: {summary[:200]}"
         else:
             self.document_context += f"\n{section_name}: {summary[:200]}"
+        
+        # Special handling for Summary section - use full document context
+        if section_name == "Summary":
+            self.document_context = f"FULL DOCUMENT SUMMARY: {summary[:800]}"

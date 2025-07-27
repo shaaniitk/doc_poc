@@ -1,0 +1,2 @@
+Loaded file: bitcoin_whitepaper.tex
+Error: 'NoneType' object is not subscriptable

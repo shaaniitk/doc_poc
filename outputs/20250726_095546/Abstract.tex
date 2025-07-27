@@ -1,0 +1,16 @@
+\documentclass{article}
+\begin{document}
+\begin{abstract}
+We propose a peer-to-peer electronic cash system that enables direct online payments between parties without financial institutions.
+
+Digital signatures address part of the solution, but the main benefits are lost if a trusted third party is still required to prevent double-spending.
+
+Our solution to the double-spending problem uses a peer-to-peer network that timestamps transactions by hashing them into an ongoing chain of hash-based proof-of-work, forming an unalterable record.
+
+The longest chain serves as proof of the sequence of events and demonstrates it originated from the largest pool of CPU power.
+
+As long as a majority of CPU power is controlled by honest nodes, they will generate the longest chain and outpace attackers.
+
+The network requires minimal structure, with messages broadcast on a best-effort basis, and nodes can freely join and leave, accepting the longest proof-of-work chain as proof of events during their absence.
+\end{abstract}
+\end{document}

@@ -1,0 +1,171 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{graphicx}
+
+\title{Bitcoin: A Peer-to-Peer Electronic Cash System}
+\author{Enhanced Version with Analysis}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\section*{Summary}
+
+This document presents a novel approach to electronic cash systems, aiming to enable direct peer-to-peer transactions without the need for a trusted third party. The proposed solution addresses the double-spending problem through a peer-to-peer network that timestamps transactions using a chain of hash-based proof-of-work. This chain forms an immutable record of transactions, with the longest chain representing the consensus view of the network.
+
+The system leverages the computational power of the network to ensure security. As long as honest nodes control the majority of CPU power, they will generate the longest chain, making it computationally infeasible for attackers to alter past transactions. The network operates with minimal structure, allowing nodes to join and leave freely while maintaining consensus through the proof-of-work mechanism.
+
+Key contributions include the definition of an electronic coin as a chain of digital signatures, the use of a peer-to-peer network to prevent double-spending, and the implementation of a proof-of-work system to ensure the integrity and chronological order of transactions. The system also introduces incentives for nodes to support the network, such as the creation of new coins and transaction fees, which help maintain the security and stability of the network.
+
+\begin{abstract}
+This paper introduces a peer-to-peer electronic cash system that enables direct transactions between parties without relying on a trusted third party. The system addresses the double-spending problem by utilizing a peer-to-peer network that timestamps transactions into a chain of hash-based proof-of-work. This chain forms an immutable record, with the longest chain representing the consensus view of the network. The network's security is maintained as long as a majority of the CPU power is controlled by honest nodes, which generate the longest chain and outpace any potential attackers.
+\end{abstract}
+
+\section{Introduction}
+
+Commerce on the Internet has come to rely almost exclusively on financial institutions serving as trusted third parties to process electronic payments. While the system works well enough for most transactions, it still suffers from the inherent weaknesses of the trust-based model. Completely non-reversible transactions are not really possible, since financial institutions cannot avoid mediating disputes.
+
+The cost of mediation increases transaction costs, limiting the minimum practical transaction size and cutting off the possibility for small casual transactions. With the broader loss of ability to make non-reversible payments for non-reversible services, the need for trust spreads. Merchants must be wary of their customers, hassling them for more information than they would otherwise need.
+
+What is needed is an electronic payment system based on cryptographic proof instead of trust, allowing any two willing parties to transact directly with each other without the need for a trusted third party. In this paper, we propose a solution to the double-spending problem using a peer-to-peer distributed timestamp server to generate computational proof of the chronological order of transactions.
+
+\section{Transactions}
+
+We define an electronic coin as a chain of digital signatures. Each owner transfers the coin to the next by digitally signing a hash of the previous transaction and the public key of the next owner and adding these to the end of the coin. A payee can verify the signatures to verify the chain of ownership.
+
+The problem is the payee can't verify that one of the owners did not double-spend the coin. A common solution is to introduce a trusted central authority, or mint, that checks every transaction for double spending. The problem with this solution is that the fate of the entire money system depends on the company running the mint.
+
+To accomplish this without a trusted party, transactions must be publicly announced, and we need a system for participants to agree on a single history of the order in which they were received.
+
+\section{Timestamp Server}
+
+The solution we propose begins with a timestamp server. A timestamp server works by taking a hash of a block of items to be timestamped and widely publishing the hash. The timestamp proves that the data must have existed at the time, in order to get into the hash. Each timestamp includes the previous timestamp in its hash, forming a chain, with each additional timestamp reinforcing the ones before it.
+
+\section{Proof-of-Work}
+
+To implement a distributed timestamp server on a peer-to-peer basis, we will need to use a proof-of-work system similar to Adam Back's Hashcash. The proof-of-work involves scanning for a value that when hashed, such as with SHA-256, the hash begins with a number of zero bits.
+
+For our timestamp network, we implement the proof-of-work by incrementing a nonce in the block until a value is found that gives the block's hash the required zero bits. Once the CPU effort has been expended to make it satisfy the proof-of-work, the block cannot be changed without redoing the work.
+
+The proof-of-work also solves the problem of determining representation in majority decision making. Proof-of-work is essentially one-CPU-one-vote. The majority decision is represented by the longest chain, which has the greatest proof-of-work effort invested in it.
+
+\section{Network}
+
+The steps to run the network are as follows:
+
+\begin{enumerate}
+\item New transactions are broadcast to all nodes.
+\item Each node collects new transactions into a block.
+\item Each node works on finding a difficult proof-of-work for its block.
+\item When a node finds a proof-of-work, it broadcasts the block to all nodes.
+\item Nodes accept the block only if all transactions in it are valid and not already spent.
+\item Nodes express their acceptance of the block by working on creating the next block in the chain.
+\end{enumerate}
+
+Nodes always consider the longest chain to be the correct one and will keep working on extending it.
+
+\section{Incentive}
+
+By convention, the first transaction in a block is a special transaction that starts a new coin owned by the creator of the block. This adds an incentive for nodes to support the network, and provides a way to initially distribute coins into circulation.
+
+The incentive can also be funded with transaction fees. If the output value of a transaction is less than its input value, the difference is a transaction fee that is added to the incentive value of the block containing the transaction.
+
+\section{Reclaiming Disk Space}
+
+Once the latest transaction in a coin is buried under enough blocks, the spent transactions before it can be discarded to save disk space. To facilitate this without breaking the block's hash, transactions are hashed in a Merkle Tree, with only the root included in the block's hash.
+
+\section{Simplified Payment Verification}
+
+It is possible to verify payments without running a full network node. A user only needs to keep a copy of the block headers of the longest proof-of-work chain, which he can get by querying network nodes until he's convinced he has the longest chain, and obtain the Merkle branch linking the transaction to the block it's timestamped in.
+
+\section{Combining and Splitting Value}
+
+Although it would be possible to handle coins individually, it would be unwieldy to make a separate transaction for every cent in a transfer. To allow value to be split and combined, transactions contain multiple inputs and outputs.
+
+\section{Privacy}
+
+The traditional banking model achieves a level of privacy by limiting access to information to the parties involved and the trusted third party. The necessity to announce all transactions publicly precludes this method, but privacy can still be maintained by keeping public keys anonymous.
+
+\section{Major and Minor Assumptions}
+
+\subsection{Major (Critical) Assumptions}
+
+\begin{enumerate}
+\item \textbf{Majority of CPU Power Controlled by Honest Nodes}: The security relies on honest nodes collectively controlling more CPU power than any cooperating group of attacker nodes.
+
+\item \textbf{Proof-of-Work Mechanism}: The proof-of-work system ensures that modifying a past block requires redoing the proof-of-work for that block and all subsequent blocks.
+
+\item \textbf{Longest Chain Rule}: Nodes always consider the longest chain to be the correct one, ensuring network convergence.
+
+\item \textbf{Incentive Mechanism}: Block rewards and transaction fees encourage honest participation.
+\end{enumerate}
+
+\subsection{Minor (Less Critical) Assumptions}
+
+\begin{enumerate}
+\item \textbf{Merkle Trees}: Enable efficient disk space optimization through transaction pruning.
+
+\item \textbf{Simplified Payment Verification}: Allows lightweight clients to verify payments without full nodes.
+
+\item \textbf{Transaction Structure}: Multiple inputs and outputs provide flexibility in value transfer.
+
+\item \textbf{Privacy Model}: Public key anonymity maintains transaction privacy.
+\end{enumerate}
+
+\section{Calculations}
+
+We consider the scenario of an attacker trying to generate an alternate chain faster than the honest chain. The race between the honest chain and an attacker chain can be characterized as a Binomial Random Walk.
+
+The probability of an attacker catching up from a given deficit is analogous to a Gambler's Ruin problem:
+
+\begin{equation}
+p = \text{probability an honest node finds the next block}
+\end{equation}
+
+\begin{equation}
+q = \text{probability the attacker finds the next block}
+\end{equation}
+
+\begin{equation}
+q_z = \begin{cases}
+1 & \text{if } p \leq q \\
+(q/p)^z & \text{if } p > q
+\end{cases}
+\end{equation}
+
+Given our assumption that $p > q$, the probability drops exponentially as the number of blocks the attacker has to catch up with increases.
+
+The probability that the attacker could still catch up now, given $\lambda = z \frac{q}{p}$, is:
+
+\begin{equation}
+1 - \sum_{k=0}^{z} \frac{\lambda^k e^{-\lambda}}{k!} \left(1-(q/p)^{(z-k)}\right)
+\end{equation}
+
+\begin{verbatim}
+#include <math.h>
+double AttackerSuccessProbability(double q, int z)
+{
+    double p = 1.0 - q;
+    double lambda = z * (q / p);
+    double sum = 1.0;
+    int i, k;
+    for (k = 0; k <= z; k++)
+    {
+        double poisson = exp(-lambda);
+        for (i = 1; i <= k; i++)
+            poisson *= lambda / i;
+        sum -= poisson * (1 - pow(q / p, z - k));
+    }
+    return sum;
+}
+\end{verbatim}
+
+\section{Conclusion}
+
+We have proposed a system for electronic transactions without relying on trust. We started with the usual framework of coins made from digital signatures, which provides strong control of ownership, but is incomplete without a way to prevent double-spending. To solve this, we proposed a peer-to-peer network using proof-of-work to record a public history of transactions.
+
+The network is robust in its unstructured simplicity. Nodes work all at once with little coordination. They do not need to be identified, since messages are not routed to any particular place and only need to be delivered on a best effort basis. Nodes can leave and rejoin the network at will, accepting the proof-of-work chain as proof of what happened while they were gone.
+
+\end{document}

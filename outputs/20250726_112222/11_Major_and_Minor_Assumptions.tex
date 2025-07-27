@@ -1,0 +1,106 @@
+### Key Assumptions Underlying the Bitcoin System
+
+#### Major (Critical) Assumptions
+
+1. **Majority of CPU Power Controlled by Honest Nodes**:
+   - The security of the Bitcoin network relies on the assumption that honest nodes collectively control more CPU power than any cooperating group of attacker nodes. This ensures that the honest chain will grow the fastest and outpace any competing chains.
+   - **Equation**:
+     \[
+     p > q
+     \]
+     where \( p \) is the probability that an honest node finds the next block, and \( q \) is the probability that the attacker finds the next block.
+
+2. **Proof-of-Work Mechanism**:
+   - The proof-of-work system is essential for securing the network. It ensures that modifying a past block requires redoing the proof-of-work for that block and all subsequent blocks, making it computationally impractical for an attacker to alter the blockchain.
+   - **Equation**:
+     \[
+     \text{Proof-of-Work} = \text{SHA-256}( \text{block data} + \text{nonce} ) \text{ with required leading zeros}
+     \]
+
+3. **Longest Chain Rule**:
+   - Nodes always consider the longest chain to be the correct one. This rule ensures that the network converges on a single version of the blockchain, even if multiple branches are created simultaneously.
+   - **Process**:
+     \begin{enumerate}
+     \item New transactions are broadcast to all nodes.
+     \item Each node collects new transactions into a block.
+     \item Each node works on finding a difficult proof-of-work for its block.
+     \item When a node finds a proof-of-work, it broadcasts the block to all nodes.
+     \item Nodes accept the block only if all transactions in it are valid and not already spent.
+     \item Nodes express their acceptance of the block by working on creating the next block in the chain, using the hash of the accepted block as the previous hash.
+     \end{enumerate}
+
+4. **Incentive Mechanism**:
+   - The incentive mechanism, including block rewards and transaction fees, is crucial for encouraging nodes to participate honestly and maintain the network.
+   - **Equation**:
+     \[
+     \text{Incentive} = \text{Block Reward} + \text{Transaction Fees}
+     \]
+
+#### Minor (Less Critical) Assumptions
+
+1. **Merkle Trees for Disk Space Optimization**:
+   - The use of Merkle trees allows for efficient disk space optimization by enabling the pruning of old transactions while maintaining the integrity of the blockchain.
+   - **Process**:
+     - Transactions are hashed in a Merkle Tree, with only the root included in the block's hash.
+     - Old blocks can be compacted by stubbing off branches of the tree.
+
+2. **Simplified Payment Verification (SPV)**:
+   - Lightweight clients can verify payments without running a full network node by maintaining a copy of the block headers of the longest proof-of-work chain and obtaining the Merkle branch linking the transaction to the block it's timestamped in.
+   - **Process**:
+     - A user keeps a copy of the block headers of the longest proof-of-work chain.
+     - The user obtains the Merkle branch linking the transaction to the block it's timestamped in.
+     - The user verifies the transaction by linking it to a place in the chain.
+
+3. **Transaction Inputs and Outputs**:
+   - Transactions contain multiple inputs and outputs to allow value to be split and combined, making the system more flexible and efficient.
+   - **Process**:
+     - Normally, there will be either a single input from a larger previous transaction or multiple inputs combining smaller amounts.
+     - There are at most two outputs: one for the payment and one returning the change, if any, back to the sender.
+
+4. **Privacy Model and Key Anonymity**:
+   - Privacy is maintained by keeping public keys anonymous and using a new key pair for each transaction to prevent linking transactions to a common owner.
+   - **Process**:
+     - The public can see that someone is sending an amount to someone else, but without information linking the transaction to anyone.
+     - A new key pair should be used for each transaction to keep them from being linked to a common owner.
+
+### Probability of Attacker Success
+
+The probability that an attacker can catch up from a given deficit \( z \) blocks behind is given by:
+
+\[
+q_z = \begin{cases}
+1 & \text{if } p \leq q \\
+(q/p)^z & \text{if } p > q
+\end{cases}
+\]
+
+Given our assumption that \( p > q \), the probability drops exponentially as the number of blocks the attacker has to catch up with increases.
+
+The probability that the attacker could still catch up now, given \( \lambda = z \frac{q}{p} \), is:
+
+\[
+1 - \sum_{k=0}^{z} \frac{\lambda^k e^{-\lambda}}{k!} \left(1-(q/p)^{(z-k)}\right)
+\]
+
+Converting to C code to calculate:
+
+\begin{verbatim}
+#include <math.h>
+double AttackerSuccessProbability(double q, int z)
+{
+    double p = 1.0 - q;
+    double lambda = z * (q / p);
+    double sum = 1.0;
+    int i, k;
+    for (k = 0; k <= z; k++)
+    {
+        double poisson = exp(-lambda);
+        for (i = 1; i <= k; i++)
+            poisson *= lambda / i;
+        sum -= poisson * (1 - pow(q / p, z - k));
+    }
+    return sum;
+}
+\end{verbatim}
+
+Running some results, we can see the probability drop off exponentially with \( z \).

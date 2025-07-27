@@ -38,11 +38,10 @@ class OutputManager:
         
         # Add sections in order
         section_order = [
-            "Title", "Author", "Abstract", "1. Introduction", 
-            "2. Theoretical Foundations", "3. The Proposed Framework: DAWF",
-            "4. Input Data and Database", "5. Implementation Details",
-            "6. Testing and Verification", "7. Experimental Results and Discussion",
-            "8. Conclusion", "References"
+            "Summary", "Abstract", "1. Introduction", "2. Transactions", "3. Timestamp Server",
+            "4. Proof-of-Work", "5. Network", "6. Incentive", "7. Reclaiming Disk Space",
+            "8. Simplified Payment Verification", "9. Combining and Splitting Value",
+            "10. Privacy", "11. Major and Minor Assumptions", "12. Calculations", "13. Conclusion"
         ]
         
         for section_name in section_order:
