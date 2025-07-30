@@ -1,0 +1,329 @@
+#!/usr/bin/env python3
+"""
+Augmentation Analysis Script
+Analyzes the quality and metrics of document augmentation process
+"""
+
+import os
+import sys
+import re
+import json
+from datetime import datetime
+
+def analyze_augmentation():
+    """Analyze augmentation results and save to log file"""
+    
+    print("🚀 AUGMENTATION ANALYSIS STARTING...")
+    
+    # Files to analyze
+    original_file = "bitcoin_whitepaper.tex"
+    augmentation_file = "blockchain_security.tex"
+    output_file = "augmented_output.tex"
+    
+    results = {
+        "analysis_type": "augmentation",
+        "timestamp": datetime.now().isoformat(),
+        "files_analyzed": {
+            "original": original_file,
+            "augmentation": augmentation_file,
+            "output": output_file
+        }
+    }
+    
+    # Check if files exist
+    if not os.path.exists(original_file):
+        print(f"❌ Original file not found: {original_file}")
+        return
+    
+    if not os.path.exists(augmentation_file):
+        print(f"❌ Augmentation file not found: {augmentation_file}")
+        return
+        
+    if not os.path.exists(output_file):
+        print(f"❌ Output file not found: {output_file}")
+        return
+    
+    # Read files
+    with open(original_file, 'r', encoding='utf-8') as f:
+        original_content = f.read()
+    
+    with open(augmentation_file, 'r', encoding='utf-8') as f:
+        augmentation_content = f.read()
+        
+    with open(output_file, 'r', encoding='utf-8') as f:
+        output_content = f.read()
+    
+    print("✅ Files loaded successfully")
+    
+    # Analyze original document
+    original_stats = analyze_document_content(original_content, "Original")
+    augmentation_stats = analyze_document_content(augmentation_content, "Augmentation")
+    output_stats = analyze_document_content(output_content, "Output")
+    
+    results["original_stats"] = original_stats
+    results["augmentation_stats"] = augmentation_stats
+    results["output_stats"] = output_stats
+    
+    # Calculate augmentation metrics
+    augmentation_metrics = calculate_augmentation_metrics(
+        original_stats, augmentation_stats, output_stats
+    )
+    results["augmentation_metrics"] = augmentation_metrics
+    
+    # Structure preservation analysis
+    structure_analysis = analyze_structure_preservation(original_content, output_content)
+    results["structure_analysis"] = structure_analysis
+    
+    # Content integration analysis
+    integration_analysis = analyze_content_integration(
+        original_content, augmentation_content, output_content
+    )
+    results["integration_analysis"] = integration_analysis
+    
+    # Calculate overall quality score
+    quality_score = calculate_quality_score(results)
+    results["overall_quality_score"] = quality_score
+    
+    # Print summary
+    print_analysis_summary(results)
+    
+    # Save results to log file
+    log_filename = f"augmentation_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    with open(log_filename, 'w', encoding='utf-8') as f:
+        json.dump(results, f, indent=2, ensure_ascii=False)
+    
+    print(f"📊 Analysis saved to: {log_filename}")
+    
+    return results
+
+def analyze_document_content(content, doc_type):
+    """Analyze document content and extract statistics"""
+    
+    stats = {
+        "document_type": doc_type,
+        "total_characters": len(content),
+        "total_lines": len(content.split('\n')),
+        "sections": len(re.findall(r'\\section\{[^}]+\}', content)),
+        "subsections": len(re.findall(r'\\subsection\{[^}]+\}', content)),
+        "equations": len(re.findall(r'\\begin\{equation\}.*?\\end\{equation\}', content, re.DOTALL)),
+        "figures": len(re.findall(r'\\begin\{figure\}.*?\\end\{figure\}', content, re.DOTALL)),
+        "tables": len(re.findall(r'\\begin\{table\}.*?\\end\{table\}', content, re.DOTALL)),
+        "itemize_lists": len(re.findall(r'\\begin\{itemize\}.*?\\end\{itemize\}', content, re.DOTALL)),
+        "enumerate_lists": len(re.findall(r'\\begin\{enumerate\}.*?\\end\{enumerate\}', content, re.DOTALL)),
+        "citations": len(re.findall(r'\\cite\{[^}]+\}', content)),
+        "references": len(re.findall(r'\\ref\{[^}]+\}', content))
+    }
+    
+    print(f"📊 {doc_type} Document Analysis:")
+    print(f"  Characters: {stats['total_characters']:,}")
+    print(f"  Sections: {stats['sections']}")
+    print(f"  Equations: {stats['equations']}")
+    print(f"  Figures: {stats['figures']}")
+    print(f"  Tables: {stats['tables']}")
+    
+    return stats
+
+def calculate_augmentation_metrics(original_stats, augmentation_stats, output_stats):
+    """Calculate augmentation-specific metrics"""
+    
+    # Content preservation (how much original content is preserved)
+    content_preservation = (output_stats['total_characters'] / 
+                          (original_stats['total_characters'] + augmentation_stats['total_characters'])) * 100
+    
+    # Structure preservation (sections maintained)
+    structure_preservation = (min(output_stats['sections'], original_stats['sections']) / 
+                            max(output_stats['sections'], original_stats['sections'])) * 100
+    
+    # Technical element preservation
+    equation_preservation = calculate_preservation_rate(
+        original_stats['equations'], output_stats['equations']
+    )
+    
+    figure_preservation = calculate_preservation_rate(
+        original_stats['figures'], output_stats['figures']
+    )
+    
+    table_preservation = calculate_preservation_rate(
+        original_stats['tables'], output_stats['tables']
+    )
+    
+    # Content enhancement (how much new content was added)
+    content_enhancement = ((output_stats['total_characters'] - original_stats['total_characters']) / 
+                          original_stats['total_characters']) * 100
+    
+    metrics = {
+        "content_preservation_percent": round(content_preservation, 2),
+        "structure_preservation_percent": round(structure_preservation, 2),
+        "equation_preservation_percent": round(equation_preservation, 2),
+        "figure_preservation_percent": round(figure_preservation, 2),
+        "table_preservation_percent": round(table_preservation, 2),
+        "content_enhancement_percent": round(content_enhancement, 2),
+        "augmentation_efficiency": round((content_enhancement / 100) * structure_preservation, 2)
+    }
+    
+    return metrics
+
+def calculate_preservation_rate(original_count, output_count):
+    """Calculate preservation rate for specific elements"""
+    if original_count == 0:
+        return 100.0 if output_count == 0 else 0.0
+    return min(100.0, (output_count / original_count) * 100)
+
+def analyze_structure_preservation(original_content, output_content):
+    """Analyze how well the original structure was preserved"""
+    
+    # Extract section titles from both documents
+    original_sections = re.findall(r'\\section\{([^}]+)\}', original_content)
+    output_sections = re.findall(r'\\section\{([^}]+)\}', output_content)
+    
+    # Calculate section preservation
+    preserved_sections = []
+    new_sections = []
+    
+    for section in original_sections:
+        if any(section.lower() in output_section.lower() for output_section in output_sections):
+            preserved_sections.append(section)
+    
+    for section in output_sections:
+        if not any(section.lower() in original_section.lower() for original_section in original_sections):
+            new_sections.append(section)
+    
+    preservation_rate = (len(preserved_sections) / len(original_sections)) * 100 if original_sections else 100
+    
+    analysis = {
+        "original_section_count": len(original_sections),
+        "output_section_count": len(output_sections),
+        "preserved_sections": preserved_sections,
+        "new_sections": new_sections,
+        "preservation_rate_percent": round(preservation_rate, 2),
+        "section_order_maintained": check_section_order(original_sections, output_sections)
+    }
+    
+    return analysis
+
+def check_section_order(original_sections, output_sections):
+    """Check if the order of original sections is maintained"""
+    # Simple check - if first 3 sections are in same relative order
+    if len(original_sections) < 3 or len(output_sections) < 3:
+        return True
+    
+    original_first_three = original_sections[:3]
+    output_positions = []
+    
+    for section in original_first_three:
+        for i, output_section in enumerate(output_sections):
+            if section.lower() in output_section.lower():
+                output_positions.append(i)
+                break
+    
+    return len(output_positions) >= 2 and output_positions == sorted(output_positions)
+
+def analyze_content_integration(original_content, augmentation_content, output_content):
+    """Analyze how well augmentation content was integrated"""
+    
+    # Look for keywords from augmentation document in output
+    augmentation_keywords = extract_keywords(augmentation_content)
+    output_keywords = extract_keywords(output_content)
+    
+    integration_rate = len(set(augmentation_keywords) & set(output_keywords)) / len(augmentation_keywords) * 100
+    
+    # Check for new sections that might contain augmentation content
+    output_sections = re.findall(r'\\section\{([^}]+)\}', output_content)
+    security_sections = [s for s in output_sections if 'security' in s.lower() or 'analysis' in s.lower()]
+    
+    analysis = {
+        "augmentation_keywords_found": len(set(augmentation_keywords) & set(output_keywords)),
+        "total_augmentation_keywords": len(augmentation_keywords),
+        "integration_rate_percent": round(integration_rate, 2),
+        "security_sections_added": len(security_sections),
+        "security_section_names": security_sections
+    }
+    
+    return analysis
+
+def extract_keywords(content):
+    """Extract key technical terms from content"""
+    # Remove LaTeX commands and extract words
+    clean_content = re.sub(r'\\[a-zA-Z]+\{[^}]*\}', '', content)
+    clean_content = re.sub(r'\\[a-zA-Z]+', '', clean_content)
+    
+    words = re.findall(r'\b[a-zA-Z]{4,}\b', clean_content.lower())
+    
+    # Filter for technical terms (simple heuristic)
+    technical_terms = [w for w in words if w in [
+        'security', 'attack', 'vulnerability', 'encryption', 'hash', 'blockchain',
+        'consensus', 'proof', 'verification', 'cryptographic', 'protocol',
+        'transaction', 'network', 'privacy', 'algorithm', 'digital', 'signature'
+    ]]
+    
+    return list(set(technical_terms))
+
+def calculate_quality_score(results):
+    """Calculate overall quality score for augmentation"""
+    
+    metrics = results["augmentation_metrics"]
+    structure = results["structure_analysis"]
+    integration = results["integration_analysis"]
+    
+    # Weighted scoring
+    score = 0
+    
+    # Structure preservation (30% weight)
+    score += (structure["preservation_rate_percent"] / 100) * 30
+    
+    # Content preservation (25% weight)
+    score += (metrics["content_preservation_percent"] / 100) * 25
+    
+    # Technical element preservation (20% weight)
+    tech_preservation = (metrics["equation_preservation_percent"] + 
+                        metrics["figure_preservation_percent"] + 
+                        metrics["table_preservation_percent"]) / 3
+    score += (tech_preservation / 100) * 20
+    
+    # Content integration (15% weight)
+    score += (integration["integration_rate_percent"] / 100) * 15
+    
+    # Enhancement value (10% weight)
+    enhancement_score = min(100, max(0, metrics["content_enhancement_percent"]))
+    score += (enhancement_score / 100) * 10
+    
+    return round(score, 2)
+
+def print_analysis_summary(results):
+    """Print a summary of the analysis results"""
+    
+    print("\n" + "="*60)
+    print("📊 AUGMENTATION ANALYSIS SUMMARY")
+    print("="*60)
+    
+    metrics = results["augmentation_metrics"]
+    structure = results["structure_analysis"]
+    integration = results["integration_analysis"]
+    quality = results["overall_quality_score"]
+    
+    print(f"🎯 Overall Quality Score: {quality}/100")
+    print()
+    
+    print("📈 Key Metrics:")
+    print(f"  Structure Preservation: {structure['preservation_rate_percent']:.1f}%")
+    print(f"  Content Enhancement: {metrics['content_enhancement_percent']:.1f}%")
+    print(f"  Technical Elements: {metrics['equation_preservation_percent']:.1f}%")
+    print(f"  Content Integration: {integration['integration_rate_percent']:.1f}%")
+    print()
+    
+    print("📋 Document Statistics:")
+    original = results["original_stats"]
+    output = results["output_stats"]
+    print(f"  Original: {original['total_characters']:,} chars, {original['sections']} sections")
+    print(f"  Output: {output['total_characters']:,} chars, {output['sections']} sections")
+    print(f"  Size Change: {metrics['content_enhancement_percent']:+.1f}%")
+    print()
+    
+    print("🆕 New Sections Added:")
+    for section in structure["new_sections"]:
+        print(f"  - {section}")
+    
+    print("\n" + "="*60)
+
+if __name__ == "__main__":
+    analyze_augmentation()
