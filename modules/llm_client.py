@@ -1,10 +1,35 @@
-"""Unified LLM client supporting multiple providers"""
+"""🧠 UNIFIED LLM CLIENT - MULTI-PROVIDER INTELLIGENCE HUB
+
+This module provides a unified interface to multiple LLM providers,
+enabling seamless switching between different AI models and services.
+It's the intelligence backbone of the entire document processing system.
+
+🌍 SUPPORTED PROVIDERS:
+- Mistral AI: High-quality, efficient models (mistral-small/medium/large)
+- OpenAI: Industry-leading GPT models (gpt-3.5-turbo, gpt-4, gpt-4-turbo)
+- Hugging Face: Open-source models and inference API
+
+🔧 KEY FEATURES:
+- Provider abstraction - switch models without code changes
+- Consistent API across all providers
+- Robust error handling and graceful failures
+- Environment-based configuration
+- Timeout and rate limiting support
+
+🎯 INTELLIGENCE INTEGRATION:
+- Powers semantic chunk analysis
+- Drives content synthesis and enhancement
+- Enables intelligent decision making
+- Provides natural language understanding
+
+This is the brain that makes everything else intelligent!
+"""
 import os
 import requests
 from dotenv import load_dotenv
 from config import LLM_CONFIG, LLM_PROVIDERS
 
-# Load environment variables
+# 🔑 Load environment variables for API keys
 load_dotenv()
 
 class UnifiedLLMClient:

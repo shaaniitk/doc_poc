@@ -1,29 +1,84 @@
-"""Document chunking module with LLM-enhanced chunking"""
+"""🔧 INTELLIGENT DOCUMENT CHUNKING MODULE
+
+This module implements sophisticated document segmentation with LLM-enhanced
+boundary detection and semantic understanding. It transforms raw documents
+into intelligently structured chunks ready for processing.
+
+🧠 INTELLIGENCE FEATURES:
+- Semantic chunk boundary detection using LLM
+- Content type classification (equations, tables, paragraphs)
+- Dependency-aware chunking for related content
+- LaTeX environment preservation
+- Adaptive merging based on content relationships
+
+📊 KEY CAPABILITIES:
+- Regex-based section extraction from LaTeX documents
+- Granular content parsing (preserves tables, equations, figures)
+- LLM-driven optimal chunk boundary identification
+- Content dependency analysis for intelligent grouping
+- Multi-strategy chunk enhancement and optimization
+
+🎯 PROCESSING PIPELINE:
+1. Extract sections using regex patterns
+2. Parse content into granular parts (text, equations, tables)
+3. Apply semantic chunking for optimal boundaries
+4. Classify content types using LLM
+5. Analyze dependencies between chunks
+6. Merge related content intelligently
+
+This creates the foundation for all downstream processing.
+"""
 import re
 import os
 import requests
 
 def extract_latex_sections(content):
-    """Extract sections from LaTeX document using regex patterns"""
-    chunks = []
+    """🔍 LATEX SECTION EXTRACTION ENGINE
     
-    # Extract comment-based sections
+    Extracts sections from LaTeX documents using sophisticated regex patterns.
+    This is the entry point for document processing - it identifies and
+    separates document sections for individual processing.
+    
+    🎯 EXTRACTION STRATEGY:
+    - Uses comment-based section markers (% --- Section ---)
+    - Preserves LaTeX environments and special content
+    - Handles bibliography sections specially
+    - Maintains parent-child relationships
+    
+    Args:
+        content: Raw LaTeX document content
+        
+    Returns:
+        list: Structured chunks with metadata
+        
+    📊 CHUNK STRUCTURE:
+    Each chunk contains:
+    - type: Content type (paragraph, equation, table, etc.)
+    - content: Actual LaTeX content
+    - parent_section: Source section name
+    """
+    chunks = []  # 📋 Collection of extracted chunks
+    
+    # 🔍 Extract comment-based sections using regex
+    # Pattern matches: % --- SectionName --- followed by content
     section_pattern = r'% --- (.+?) ---\n(.*?)(?=% ---|\\begin\{thebibliography\}|\\end\{document\}|$)'
     sections = re.findall(section_pattern, content, re.DOTALL)
     
+    # 🔄 Process each identified section
     for section_name, section_content in sections:
-        if section_content.strip():
+        if section_content.strip():  # ✅ Only process non-empty sections
+            # 🔧 Extract granular content parts from section
             parts = extract_content_parts(section_content.strip(), section_name)
             chunks.extend(parts)
     
-    # Extract bibliography
+    # 📚 Special handling for bibliography section
     bib_pattern = r'(\\begin\{thebibliography\}.*?\\end\{thebibliography\})'
     bib_match = re.search(bib_pattern, content, re.DOTALL)
     if bib_match:
         chunks.append({
-            'type': 'bibliography',
-            'content': bib_match.group(1),
-            'parent_section': 'References'
+            'type': 'bibliography',           # 📚 Special type for references
+            'content': bib_match.group(1),    # 📄 Full bibliography content
+            'parent_section': 'References'    # 🏠 Logical parent section
         })
     
     return chunks
@@ -168,59 +223,122 @@ Content: {chunk['content'][:500]}"""
         return chunks
 
 def llm_enhance_chunking(chunks, use_llm=True):
-    """Use LLM to improve chunk boundaries and merge related content"""
+    """🧠 LLM-ENHANCED CHUNKING OPTIMIZATION ENGINE
+    
+    This is where the magic happens! Uses LLM intelligence to optimize
+    chunk boundaries and merge related content for better processing.
+    
+    🎯 ENHANCEMENT STRATEGIES:
+    1. Content type classification using LLM
+    2. Dependency-aware chunking for related content
+    3. Intelligent merging based on semantic relationships
+    4. Size optimization for processing efficiency
+    
+    🧠 LLM INTELLIGENCE:
+    - Classifies content types (equation, table, figure, text)
+    - Analyzes content dependencies and relationships
+    - Makes merge decisions based on semantic coherence
+    - Optimizes chunk sizes for downstream processing
+    
+    Args:
+        chunks: Raw chunks from extraction
+        use_llm: Enable LLM-based enhancements
+        
+    Returns:
+        list: Optimized chunks with enhanced boundaries
+    """
+    # 🔍 Early exit if LLM not available or disabled
     if not use_llm or not os.getenv("MISTRAL_API_KEY"):
         return chunks
     
-    if not use_llm or not os.getenv("MISTRAL_API_KEY"):
-        return chunks
+    # 🧠 Apply LLM-powered enhancement strategies
+    print("  🧠 Applying LLM-enhanced chunking...")
     
-    # Apply enhancement strategies
+    # 🏷️ Step 1: Classify content types using LLM
     enhanced_chunks = content_type_classification(chunks)
+    
+    # 🔗 Step 2: Analyze and group dependent content
     enhanced_chunks = dependency_aware_chunking(enhanced_chunks)
     
-    # Traditional merge logic
+    # 🔄 Step 3: Apply intelligent merging logic
     final_chunks = []
     for i, chunk in enumerate(enhanced_chunks):
+        # 📊 Check if small paragraph chunks should be merged
         if chunk['type'] == 'paragraph' and len(chunk['content']) < 200:
             next_chunk = enhanced_chunks[i+1] if i+1 < len(enhanced_chunks) else None
+            
+            # 🔗 Only merge chunks from same section with same type
             if (next_chunk and next_chunk['type'] == 'paragraph' and 
                 next_chunk['parent_section'] == chunk['parent_section']):
                 
+                # 🧠 LLM decides if chunks should be merged
                 merge_decision = should_merge_chunks(chunk['content'], next_chunk['content'])
                 if merge_decision:
+                    # 🔗 Create merged chunk
                     merged_chunk = {
                         'type': 'paragraph',
                         'content': chunk['content'] + '\n\n' + next_chunk['content'],
                         'parent_section': chunk['parent_section']
                     }
                     final_chunks.append(merged_chunk)
-                    enhanced_chunks[i+1] = None
+                    enhanced_chunks[i+1] = None  # 🗑️ Mark for removal
                     continue
         
+        # ✅ Keep chunk if not merged
         if chunk is not None:
             final_chunks.append(chunk)
     
+    # 🧹 Filter out None entries from merging
     return [c for c in final_chunks if c is not None]
 
 def should_merge_chunks(content1, content2):
-    """Use LLM to decide if two text chunks should be merged"""
-    prompt = f"""Should these two text segments be merged into one coherent paragraph? 
+    """🧠 LLM-POWERED CHUNK MERGE DECISION ENGINE
+    
+    Uses LLM intelligence to determine if two text chunks should be merged
+    based on semantic coherence and logical flow.
+    
+    🎯 DECISION CRITERIA:
+    - Semantic relationship between chunks
+    - Logical flow and coherence
+    - Content complementarity
+    - Natural paragraph boundaries
+    
+    Args:
+        content1: First chunk content
+        content2: Second chunk content
+        
+    Returns:
+        bool: True if chunks should be merged
+        
+    🧠 LLM ANALYSIS:
+    The LLM analyzes content meaning and relationships to make
+    intelligent merge decisions, not just based on size or position.
+    """
+    # 🧠 Construct intelligent merge analysis prompt
+    prompt = f"""🎯 CHUNK MERGE ANALYSIS
+    
+Should these two text segments be merged into one coherent paragraph?
+Consider semantic relationship, logical flow, and natural boundaries.
 Respond with only 'YES' or 'NO'.
 
-Segment 1: {content1[:300]}
+📄 SEGMENT 1: {content1[:300]}
 
-Segment 2: {content2[:300]}"""
+📄 SEGMENT 2: {content2[:300]}
+
+📊 DECISION:"""
     
     try:
+        # 🚀 Use LLM client for intelligent analysis
         from .llm_client import UnifiedLLMClient
         client = UnifiedLLMClient()
         result = client.call_llm(prompt, max_tokens=10, temperature=0.1)
         return "YES" in result.upper()
-    except:
+    except Exception as e:
+        # 🔄 Graceful fallback on LLM failure
+        print(f"    ⚠️ Merge decision failed: {e}")
         pass
     
-    return False
+    return False  # 🛡️ Conservative default: don't merge
 
 def semantic_chunk_boundaries(content, section_name):
     """Use LLM to identify optimal chunk boundaries"""
@@ -271,11 +389,41 @@ Text: {content[:2000]}"""
     return [content]
 
 def group_chunks_by_section(chunks):
-    """Group chunks by their parent section"""
-    grouped = {}
+    """📋 SECTION-BASED CHUNK ORGANIZATION
+    
+    Groups processed chunks by their parent sections for organized processing.
+    This creates the structure needed for section-by-section document processing.
+    
+    🏗️ ORGANIZATION STRATEGY:
+    - Groups chunks by parent_section metadata
+    - Maintains chunk order within sections
+    - Creates dictionary structure for easy access
+    - Preserves all chunk metadata and relationships
+    
+    Args:
+        chunks: List of processed chunks with parent_section metadata
+        
+    Returns:
+        dict: Sections as keys, lists of chunks as values
+        
+    📊 OUTPUT STRUCTURE:
+    {
+        'Section1': [chunk1, chunk2, ...],
+        'Section2': [chunk3, chunk4, ...],
+        ...
+    }
+    """
+    grouped = {}  # 📋 Dictionary to hold grouped chunks
+    
+    # 🔄 Process each chunk and group by parent section
     for chunk in chunks:
-        section = chunk['parent_section']
+        section = chunk['parent_section']  # 🏠 Get parent section name
+        
+        # 🆕 Create section group if it doesn't exist
         if section not in grouped:
             grouped[section] = []
+        
+        # ➕ Add chunk to its parent section group
         grouped[section].append(chunk)
+    
     return grouped

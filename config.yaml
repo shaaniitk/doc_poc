@@ -1,4 +1,4 @@
-# Document Processing System Configuration
+you i# Document Processing System Configuration
 
 # LLM Configuration
 llm:
@@ -11,14 +11,75 @@ llm:
 
 # Processing Configuration
 processing:
-  template: "academic"  # Document template: academic, bitcoin, technical
-  enable_enhancement: true  # Enable LLM enhancement
-  chunk_strategy: "semantic"  # Chunking strategy: semantic, regex
-  multi_pass: false  # Enable multi-pass processing
-  quality_threshold: 0.8  # Quality threshold for acceptance
+  template: "advanced_latex"
+  enable_enhancement: true
+  chunk_strategy: "llm_enhanced"
+  multi_pass: true
+  quality_threshold: 0.9
+  chunker_module: "modules/chunker.py"
+  processor_module: "modules/advanced_processing.py"
+  aggregator_module: "modules/intelligent_aggregation.py"
+  chunker_function: "llm_enhance_chunking"
+  processor_function: "multi_pass_processing"
+  aggregator_function: "coherence_optimization"
 
 # Document Templates
 templates:
+  advanced_latex:
+    description: "Advanced LaTeX document with multi-stage LLM processing and deep chunking."
+    chunking:
+      method: "llm_enhanced"
+      environments:
+        - section
+        - subsection
+        - subsubsection
+        - equation
+        - align
+        - table
+        - figure
+        - itemize
+        - enumerate
+        - theorem
+        - proof
+        - definition
+      preserve_dependencies: true
+      merge_related: true
+      classify_types: true
+    processing:
+      multi_pass: true
+      passes:
+        - name: "analysis"
+          prompt: "Analyze the content for key concepts, technical depth, and logical flow."
+        - name: "rewrite"
+          prompt: "Rewrite with clarity, preserving all technical details and LaTeX structure."
+        - name: "self_critique"
+          prompt: "Review and refine the output for accuracy, coherence, and completeness."
+      advanced_prompts: true
+      harmonize_terminology: true
+      preserve_equations: true
+      preserve_tables: true
+      preserve_figures: true
+    aggregation:
+      method: "coherence_optimization"
+      transitions: true
+      forward_references: true
+      harmonize_style: true
+      deep_content_preservation: true
+    sections:
+      - name: "Abstract"
+        prompt: "Summarize the main contributions in a concise abstract."
+      - name: "Introduction"
+        prompt: "Motivate the work and outline the structure."
+      - name: "Related Work"
+        prompt: "Summarize related research and context."
+      - name: "Methodology"
+        prompt: "Describe the methodology with technical precision."
+      - name: "Results"
+        prompt: "Present results with analysis and figures."
+      - name: "Discussion"
+        prompt: "Discuss implications, limitations, and future work."
+      - name: "Conclusion"
+        prompt: "Summarize findings and propose next steps."
   academic:
     sections:
       - name: "Abstract"
@@ -33,7 +94,6 @@ templates:
         prompt: "Discuss the implications and significance of the results."
       - name: "Conclusion"
         prompt: "Summarize the main contributions and future work."
-  
   bitcoin:
     sections:
       - name: "Summary"
@@ -55,6 +115,7 @@ templates:
       - name: "Calculations"
         prompt: "Present the mathematical analysis of attack probabilities."
       - name: "Conclusion"
+        prompt: "Summarize the proposed system and its benefits."
         prompt: "Summarize the proposed system and its benefits."
 
 # Output Configuration

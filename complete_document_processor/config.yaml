@@ -1,0 +1,126 @@
+# Document Processing Configuration
+
+# LLM Configuration
+llm:
+  provider: "mistral"  # Options: mistral, openai, huggingface
+  model: "open-mistral-7b"  # open-mistral-7b, mistral-small-latest, gpt-3.5-turbo, mistralai/Mistral-7B-Instruct-v0.3
+  max_tokens: 2048  # Increased for chunk processing with context
+  temperature: 0.2
+
+# Processing Configuration
+processing:
+  template: "bitcoin_paper"
+  enable_enhancement: true
+  chunk_strategy: "semantic"
+
+# Output Configuration
+output:
+  directory: "."
+  format: "latex"
+  extension: ".tex"
+  generate_pdf: true
+
+# Document Templates - Define target document structures
+document_templates:
+  bitcoin_paper:
+    - section: "Summary"
+      content_type: "prose"
+      prompt: "Create a comprehensive summary of the entire Bitcoin system based on all document sections. This should provide a high-level overview before the detailed content."
+    - section: "Abstract"
+      content_type: "prose"
+      prompt: "Rewrite as a concise abstract summarizing the Bitcoin electronic payment system."
+    - section: "1. Introduction"
+      content_type: "prose"
+      prompt: "Create compelling introduction explaining the electronic payment problem."
+    - section: "2. Transactions"
+      content_type: "prose_and_equations"
+      prompt: "Explain Bitcoin transactions using digital signatures. Preserve all equations exactly."
+    - section: "3. Timestamp Server"
+      content_type: "prose_and_equations"
+      prompt: "Describe timestamp server concept. Preserve all equations exactly."
+    - section: "4. Proof-of-Work"
+      content_type: "prose_and_equations"
+      prompt: "Explain proof-of-work mechanism. Preserve all equations exactly."
+    - section: "5. Network"
+      content_type: "prose"
+      prompt: "Detail the network protocol and consensus."
+    - section: "6. Incentive"
+      content_type: "prose"
+      prompt: "Explain economic incentives for miners."
+    - section: "7. Reclaiming Disk Space"
+      content_type: "prose"
+      prompt: "Describe storage optimization using Merkle trees."
+    - section: "8. Simplified Payment Verification"
+      content_type: "prose"
+      prompt: "Explain lightweight client verification."
+    - section: "9. Combining and Splitting Value"
+      content_type: "prose"
+      prompt: "Detail transaction inputs and outputs."
+    - section: "10. Privacy"
+      content_type: "prose"
+      prompt: "Discuss Bitcoin's privacy model."
+    - section: "11. Major and Minor Assumptions"
+      content_type: "prose_and_equations"
+      prompt: "Detail the key assumptions underlying the Bitcoin system. Structure with Major (Critical) Assumptions and Minor (Less Critical) Assumptions subsections. Preserve all equations exactly."
+    - section: "12. Calculations"
+      content_type: "prose_and_equations"
+      prompt: "Present mathematical analysis. Preserve all equations exactly."
+    - section: "13. Conclusion"
+      content_type: "prose"
+      prompt: "Summarize Bitcoin's key contributions."
+  
+  academic_paper:
+    - section: "Abstract"
+      content_type: "prose"
+      prompt: "Create concise academic abstract."
+    - section: "1. Introduction"
+      content_type: "prose"
+      prompt: "Write compelling introduction with motivation."
+    - section: "2. Related Work"
+      content_type: "prose"
+      prompt: "Survey related work and position research."
+    - section: "3. Methodology"
+      content_type: "prose_and_equations"
+      prompt: "Describe methodology. Preserve equations exactly."
+    - section: "4. Results"
+      content_type: "prose_tables_and_figures"
+      prompt: "Present results. Preserve tables and figures exactly."
+    - section: "5. Discussion"
+      content_type: "prose"
+      prompt: "Discuss implications and limitations."
+    - section: "6. Conclusion"
+      content_type: "prose"
+      prompt: "Summarize contributions and impact."
+
+# Section Mappings - Map source document sections to target template sections
+# Key: source section name (as found in original document)
+# Value: target section name (as defined in document template)
+# This allows flexible mapping of various source formats to standardized templates
+section_mappings:
+  bitcoin_paper:
+    "Summary": "Summary"
+    "Abstract": "Abstract"
+    "Introduction": "1. Introduction"
+    "Transactions": "2. Transactions"
+    "Timestamp Server": "3. Timestamp Server"
+    "Proof-of-Work": "4. Proof-of-Work"
+    "Network": "5. Network"
+    "Incentive": "6. Incentive"
+    "Reclaiming Disk Space": "7. Reclaiming Disk Space"
+    "Simplified Payment Verification": "8. Simplified Payment Verification"
+    "Combining and Splitting Value": "9. Combining and Splitting Value"
+    "Privacy": "10. Privacy"
+    "Major and Minor Assumptions": "11. Major and Minor Assumptions"
+    "Calculations": "12. Calculations"
+    "Conclusion": "13. Conclusion"
+  
+  academic_paper:
+    "Abstract": "Abstract"
+    "Introduction": "1. Introduction"
+    "Related Work": "2. Related Work"
+    "Literature Review": "2. Related Work"  # Alternative mapping
+    "Methodology": "3. Methodology"
+    "Methods": "3. Methodology"  # Alternative mapping
+    "Results": "4. Results"
+    "Discussion": "5. Discussion"
+    "Conclusion": "6. Conclusion"

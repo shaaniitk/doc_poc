@@ -1,0 +1,62 @@
+{
+  "theme": "ANSI Light",
+  "mcpservers": {
+    "hf-mcp-server": {
+      "url": "https://huggingface.co/mcp",
+      "headers": {
+        "Authorization": ""
+      }
+    },
+    "sequentialthinking": {
+                "command": "npx",
+                "args": [
+                    "-y",
+                    "@modelcontextprotocol/server-sequential-thinking"
+                ]
+            },
+            "filesystem": {
+                "command": "npx",
+                "args": [
+                    "-y",
+                    "@modelcontextprotocol/server-filesystem",
+                    "//Users/shantanumisra/workspace"
+                ]
+            } ,
+            "memory-bank": {
+                "type": "stdio",
+                "command": "npx",
+                "args": [
+                    "-y",
+                    "@allpepper/memory-bank-mcp"
+                ],
+                "cwd": "${input:cwd}",
+                "env": {
+                    "MEMORY_BANK_ROOT": "<path-to-bank>"
+                }
+        },  
+            "serena":{
+                "command": "uvx",
+                "args": [
+                    "--directory",
+                    "/Users/shantanumisra/workspace/MCP/serena",
+                    "run",
+                    "serena-mcp-server"
+                ],
+                "type":"stdio"
+            },
+            "smart-tree": {
+                    "command": "/usr/local/bin/st",
+                    "mode":"ai",
+                    "compress":"true",
+                    "args": [
+                        "--mcp"
+                    ],
+                    "env": {
+                        "AI_TOOLS": "1"
+                    }
+                }   
+        }
+  }
+
+
+

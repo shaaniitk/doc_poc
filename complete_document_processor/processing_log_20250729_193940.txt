@@ -1,0 +1,17 @@
+Loaded file: bitcoin_whitepaper.tex
+Extracted 13 chunks into 13 sections
+Assigned chunks to document skeleton
+Processed section: Abstract
+Processed section: 1. Introduction
+Processed section: 2. Transactions
+Processed section: 3. Timestamp Server
+Processed section: 4. Proof-of-Work
+Processed section: 5. Network
+Processed section: 6. Incentive
+Processed section: 7. Reclaiming Disk Space
+Processed section: 8. Simplified Payment Verification
+Processed section: 9. Combining and Splitting Value
+Processed section: 10. Privacy
+Processed section: 11. Calculations
+Processed section: 12. Conclusion
+Final document saved: ./final_document_20250729_193940.tex

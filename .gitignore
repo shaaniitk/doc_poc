@@ -1,16 +1,21 @@
-.*
+# Environment variables
 .env
-*.pdf
-*.jpg
-*.png
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Downloaded TeX sources
+/downloads/
+
+# Processed and augmented documents
+/outputs/
+
+# Intermediate and compiled LaTeX files
+*_preprocessed.tex
 *.aux
 *.log
-*.pyc
-*.sh
-
-# Only include these file types
-!*.tex
-!*.txt
-!*.md
-!*.py
-!.gitignore
+*.pdf
+*.synctex.gz
+*.tex
