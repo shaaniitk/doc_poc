@@ -34,65 +34,57 @@ import requests
 from .error_handler import robust_llm_call, validate_chunk, safe_regex_extract, ChunkingError, LLMError
 
 def extract_latex_sections(content):
-    """Extract sections with robust error handling"""
-    if not content or len(content.strip()) < 10:
-        raise ChunkingError("Invalid or empty content provided")
-    
-    try:
-        chunks = []  # Collection of extracted chunks
+    """Extract sections with robust error handling
     
     Extracts sections from LaTeX documents using sophisticated regex patterns.
     This is the entry point for document processing - it identifies and
     separates document sections for individual processing.
-    
-    🎯 EXTRACTION STRATEGY:
-    - Uses comment-based section markers (% --- Section ---)
-    - Preserves LaTeX environments and special content
-    - Handles bibliography sections specially
-    - Maintains parent-child relationships
     
     Args:
         content: Raw LaTeX document content
         
     Returns:
         list: Structured chunks with metadata
-        
-    📊 CHUNK STRUCTURE:
-    Each chunk contains:
-    - type: Content type (paragraph, equation, table, etc.)
-    - content: Actual LaTeX content
-    - parent_section: Source section name
     """
-
+    if not content or len(content.strip()) < 10:
+        raise ChunkingError("Invalid or empty content provided")
     
-    #  Extract comment-based sections using regex
-    # Pattern matches: % --- SectionName --- followed by content
-    section_pattern = r'% --- (.+?) ---\n(.*?)(?=% ---|\\begin\{thebibliography\}|\\end\{document\}|$)'
-    sections = re.findall(section_pattern, content, re.DOTALL)
-    
-    #  Process each identified section
-    for section_name, section_content in sections:
-        if section_content.strip():  # Only process non-empty sections
-            #  Extract granular content parts from section
-            parts = extract_content_parts(section_content.strip(), section_name)
-            chunks.extend(parts)
-    
-    #  Special handling for bibliography section
-    bib_pattern = r'(\\begin\{thebibliography\}.*?\\end\{thebibliography\})'
-    bib_match = re.search(bib_pattern, content, re.DOTALL)
-    if bib_match:
-        chunks.append({
-            'type': 'bibliography',           #  Special type for references
-            'content': bib_match.group(1),    #  Full bibliography content
-            'parent_section': 'References'    #  Logical parent section
-        })
+    try:
+        chunks = []  # Collection of extracted chunks
+        
+        # Extract comment-based sections using safe regex
+        section_pattern = r'% --- (.+?) ---\n(.*?)(?=% ---|\\begin\{thebibliography\}|\\end\{document\}|$)'
+        sections = safe_regex_extract(section_pattern, content, re.DOTALL)
+        
+        # Process each identified section
+        for section_name, section_content in sections:
+            if section_content.strip():  # Only process non-empty sections
+                # Extract granular content parts from section
+                parts = extract_content_parts(section_content.strip(), section_name)
+                chunks.extend(parts)
+        
+        # Special handling for bibliography section
+        bib_pattern = r'(\\begin\{thebibliography\}.*?\\end\{thebibliography\})'
+        bib_matches = safe_regex_extract(bib_pattern, content, re.DOTALL)
+        bib_match = bib_matches[0] if bib_matches else None
+        
+        if bib_match:
+            chunks.append({
+                'type': 'bibliography',
+                'content': bib_match,
+                'parent_section': 'References'
+            })
         
         return chunks
     except Exception as e:
         raise ChunkingError(f"Section extraction failed: {e}")
 
 def extract_content_parts(content, section_name):
-    """Extract text paragraphs and LaTeX environments from content"""
+    """Extract content parts with validation"""
+    if not content or not section_name:
+        return []
+    
+    try:
     # Handle tables with labels as complete units
     table_pattern = r'(\\begin\{table\}.*?\\end\{table\}(?:\s*\\label\{[^}]+\})?)'    
     tables = re.findall(table_pattern, content, re.DOTALL)
@@ -162,7 +154,18 @@ def extract_content_parts(content, section_name):
                     'parent_section': section_name
                 })
     
-    return parts
+        # Validate all chunks before returning
+        validated_parts = []
+        for part in parts:
+            if validate_chunk(part):
+                validated_parts.append(part)
+        
+        if not validated_parts:
+            raise ChunkingError(f"No valid chunks extracted from {section_name}")
+        
+        return validated_parts
+    except Exception as e:
+        raise ChunkingError(f"Content extraction failed for {section_name}: {e}")
 
 def dependency_aware_chunking(chunks):
     """Group chunks based on content dependencies"""
