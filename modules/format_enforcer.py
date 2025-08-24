@@ -1,21 +1,21 @@
-"""🎨 FORMAT ENFORCEMENT MODULE - OUTPUT QUALITY GUARDIAN
+"""Format enforcement module - output quality guardian
 
 This module ensures LLM outputs conform to strict format requirements,
 preventing compilation errors and maintaining professional document quality.
 
-🎯 KEY RESPONSIBILITIES:
+KEY RESPONSIBILITIES:
 - Validate LLM outputs against format-specific rules
 - Automatically fix common formatting errors
 - Provide clear error messages for manual correction
 - Support multiple output formats (LaTeX, Markdown, JSON)
 
-🛡️ QUALITY ASSURANCE:
+QUALITY ASSURANCE:
 - Pattern-based validation for format compliance
 - Automatic correction of common mistakes
 - Prevention of compilation-breaking errors
 - Consistent formatting across all outputs
 
-🔧 SUPPORTED FORMATS:
+SUPPORTED FORMATS:
 - LaTeX: Academic papers, technical documents
 - Markdown: Documentation, web content
 - JSON: Structured data output
@@ -24,18 +24,18 @@ This is the quality control checkpoint for all generated content.
 """
 
 class FormatEnforcer:
-    """🎨 FORMAT ENFORCEMENT ENGINE
+    """Format enforcement engine
     
     Enforces strict format compliance for LLM outputs to ensure
     professional, compilation-ready documents.
     
-    🔧 ENFORCEMENT STRATEGIES:
+    ENFORCEMENT STRATEGIES:
     - System prompts for LLM behavior control
     - Validation patterns for error detection
     - Post-processing rules for automatic fixes
     - Multi-format support with format-specific rules
     
-    🎯 QUALITY FOCUS:
+    QUALITY FOCUS:
     Prevents common LLM formatting mistakes that break compilation.
     """
     def __init__(self, output_format="latex"):

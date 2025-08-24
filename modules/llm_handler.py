@@ -2,6 +2,7 @@
 import os
 from .llm_client import UnifiedLLMClient
 from .format_enforcer import FormatEnforcer
+from .error_handler import robust_llm_call, LLMError
 
 class ContextualLLMHandler:
     def __init__(self, provider=None, model=None, output_format="latex"):
@@ -10,6 +11,7 @@ class ContextualLLMHandler:
         self.llm_client = UnifiedLLMClient(provider, model)
         self.format_enforcer = FormatEnforcer(output_format)
     
+    @robust_llm_call(max_retries=2)
     def process_section(self, section_name, content, prompt):
         """Process a section with contextual awareness"""
         # Build context
@@ -47,11 +49,12 @@ class ContextualLLMHandler:
         summary = new_content[:500] + "..." if len(new_content) > 500 else new_content
         self.section_contexts[section_name] = summary
         
-        # Update document context (accumulate key points)
-        if len(self.document_context) > 1000:
-            self.document_context = self.document_context[-500:] + f"\n{section_name}: {summary[:200]}"
-        else:
-            self.document_context += f"\n{section_name}: {summary[:200]}"
+        # Improved context management with size limits
+        if len(self.document_context) > 2000:
+            # Keep only most recent context
+            self.document_context = self.document_context[-1000:]
+        
+        self.document_context += f"\n{section_name}: {summary[:150]}"
         
         # Special handling for Summary section - use full document context
         if section_name == "Summary":

@@ -16,8 +16,8 @@ from config import CHUNKING_STRATEGIES, DOCUMENT_TEMPLATES
 def main(source=None, source2=None, combine_strategy="smart_merge", chunking_strategy="semantic", output_format="latex", template="bitcoin_paper", analysis=None):
     # Handle document combination
     if source2:
-        from modules.document_combiner import DocumentCombiner
-        combiner = DocumentCombiner(output_format)
+        from modules.robust_combiner import RobustDocumentCombiner
+        combiner = RobustDocumentCombiner(output_format)
         
         print(f"Combining documents: {source} + {source2}")
         combined_content, format_issues = combiner.combine_documents(
