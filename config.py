@@ -42,21 +42,21 @@ CHUNKING_STRATEGIES = {
 # Document Templates
 DOCUMENT_TEMPLATES = {
     "bitcoin_paper": [
-        {"section": "Summary", "prompt": "Create a comprehensive summary covering key findings and results."},
-        {"section": "Abstract", "prompt": "Rewrite as a concise abstract for the peer-to-peer electronic cash system."},
-        {"section": "1. Introduction", "prompt": "Explain the problem with current payment systems."},
-        {"section": "2. Transactions", "prompt": "Explain how electronic coins work as chains of digital signatures."},
-        {"section": "3. Timestamp Server", "prompt": "Describe the timestamp server solution."},
-        {"section": "4. Proof-of-Work", "prompt": "Explain the proof-of-work system and implementation."},
-        {"section": "5. Network", "prompt": "Detail the network protocol and steps."},
-        {"section": "6. Incentive", "prompt": "Explain the incentive mechanism for nodes."},
-        {"section": "7. Reclaiming Disk Space", "prompt": "Explain how to reclaim disk space by pruning old transactions."},
-        {"section": "8. Simplified Payment Verification", "prompt": "Describe simplified payment verification for lightweight clients."},
-        {"section": "9. Combining and Splitting Value", "prompt": "Explain how to handle multiple inputs and outputs in transactions."},
-        {"section": "10. Privacy", "prompt": "Discuss privacy considerations and limitations."},
-        {"section": "11. Major and Minor Assumptions", "prompt": "Analyze the key assumptions underlying the system."},
-        {"section": "12. Calculations", "prompt": "Present the mathematical analysis of attack probabilities."},
-        {"section": "13. Conclusion", "prompt": "Summarize the proposed system and its benefits."}
+        {"section": "Summary", "prompt": "Format as LaTeX with section title 'Summary'. Preserve all technical content exactly."},
+        {"section": "Abstract", "prompt": "Format as LaTeX with section title 'Abstract'. Preserve all technical content exactly."},
+        {"section": "1. Introduction", "prompt": "Format as LaTeX with section title 'Introduction'. Preserve all technical content exactly."},
+        {"section": "2. Transactions", "prompt": "Format as LaTeX with section title 'Transactions'. Preserve all technical content exactly."},
+        {"section": "3. Timestamp Server", "prompt": "Format as LaTeX with section title 'Timestamp Server'. Preserve all technical content exactly."},
+        {"section": "4. Proof-of-Work", "prompt": "Format as LaTeX with section title 'Proof-of-Work'. Preserve all technical content exactly."},
+        {"section": "5. Network", "prompt": "Format as LaTeX with section title 'Network'. Preserve all technical content exactly."},
+        {"section": "6. Incentive", "prompt": "Format as LaTeX with section title 'Incentive'. Preserve all technical content exactly."},
+        {"section": "7. Reclaiming Disk Space", "prompt": "Format as LaTeX with section title 'Reclaiming Disk Space'. Preserve all technical content exactly."},
+        {"section": "8. Simplified Payment Verification", "prompt": "Format as LaTeX with section title 'Simplified Payment Verification'. Preserve all technical content exactly."},
+        {"section": "9. Combining and Splitting Value", "prompt": "Format as LaTeX with section title 'Combining and Splitting Value'. Preserve all technical content exactly."},
+        {"section": "10. Privacy", "prompt": "Format as LaTeX with section title 'Privacy'. Preserve all technical content exactly."},
+        {"section": "11. Major and Minor Assumptions", "prompt": "Format as LaTeX with section title 'Major and Minor Assumptions'. Preserve all technical content exactly."},
+        {"section": "12. Calculations", "prompt": "Format as LaTeX with section title 'Calculations'. Preserve all technical content exactly."},
+        {"section": "13. Conclusion", "prompt": "Format as LaTeX with section title 'Conclusion'. Preserve all technical content exactly."}
     ]
 }
 
