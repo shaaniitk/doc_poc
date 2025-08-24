@@ -3,6 +3,7 @@ import os
 import requests
 from dotenv import load_dotenv
 from config import LLM_CONFIG, LLM_PROVIDERS
+from .error_handler import LLMError, ResponseValidator, CircuitBreaker
 
 try:
     import google.generativeai as genai
@@ -23,28 +24,45 @@ class UnifiedLLMClient:
         self.provider = provider or LLM_CONFIG["provider"]
         self.model = model or LLM_CONFIG["model"]
         self.config = LLM_PROVIDERS.get(self.provider, {})
+        # Basic circuit breaker to prevent cascading failures
+        self.circuit_breaker = CircuitBreaker()
 
     def call_llm(self, prompt, system_prompt="", max_tokens=None, temperature=None):
         max_tokens = max_tokens or LLM_CONFIG["max_tokens"]
         temperature = temperature or LLM_CONFIG["temperature"]
 
-        if self.provider == "mistral":
-            return self._call_mistral(prompt, system_prompt, max_tokens, temperature)
-        elif self.provider == "openai":
-            return self._call_openai(prompt, system_prompt, max_tokens, temperature)
-        elif self.provider == "huggingface":
-            return self._call_huggingface(prompt, system_prompt, max_tokens, temperature)
-        elif self.provider == "gemini":
-            return self._call_gemini(prompt, system_prompt, max_tokens, temperature)
-        elif self.provider == "vertexai":
-            return self._call_vertexai(prompt, system_prompt, max_tokens, temperature)
-        else:
-            return f"% Error: Unsupported provider {self.provider}"
+        if not self.circuit_breaker.allow_request():
+            raise LLMError("Circuit breaker is OPEN; skipping LLM call")
+
+        try:
+            if self.provider == "mistral":
+                raw = self._call_mistral(prompt, system_prompt, max_tokens, temperature)
+            elif self.provider == "openai":
+                raw = self._call_openai(prompt, system_prompt, max_tokens, temperature)
+            elif self.provider == "huggingface":
+                raw = self._call_huggingface(prompt, system_prompt, max_tokens, temperature)
+            elif self.provider == "gemini":
+                raw = self._call_gemini(prompt, system_prompt, max_tokens, temperature)
+            elif self.provider == "vertexai":
+                raw = self._call_vertexai(prompt, system_prompt, max_tokens, temperature)
+            else:
+                raise LLMError(f"Unsupported provider {self.provider}")
+
+            # Validate response before returning
+            validated = ResponseValidator.validate_llm_response(raw)
+            self.circuit_breaker.record_success()
+            return validated
+        except Exception as e:
+            # Convert to LLMError and record failure
+            if not isinstance(e, LLMError):
+                e = LLMError(str(e))
+            self.circuit_breaker.record_failure()
+            raise e
 
     def _call_mistral(self, prompt, system_prompt, max_tokens, temperature):
         api_key = os.getenv("MISTRAL_API_KEY")
         if not api_key:
-            return "% Error: MISTRAL_API_KEY not set"
+            raise LLMError("MISTRAL_API_KEY not set")
 
         messages = []
         if system_prompt:
@@ -67,14 +85,14 @@ class UnifiedLLMClient:
             if response.status_code == 200:
                 return response.json()["choices"][0]["message"]["content"]
             else:
-                return f"% API Error: {response.status_code}"
+                raise LLMError(f"API Error: {response.status_code}")
         except Exception as e:
-            return f"% Error: {str(e)}"
+            raise LLMError(str(e))
 
     def _call_openai(self, prompt, system_prompt, max_tokens, temperature):
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            return "% Error: OPENAI_API_KEY not set"
+            raise LLMError("OPENAI_API_KEY not set")
 
         messages = []
         if system_prompt:
@@ -97,14 +115,14 @@ class UnifiedLLMClient:
             if response.status_code == 200:
                 return response.json()["choices"][0]["message"]["content"]
             else:
-                return f"% API Error: {response.status_code}"
+                raise LLMError(f"API Error: {response.status_code}")
         except Exception as e:
-            return f"% Error: {str(e)}"
+            raise LLMError(str(e))
 
     def _call_huggingface(self, prompt, system_prompt, max_tokens, temperature):
         api_key = os.getenv("HUGGINGFACE_API_KEY")
         if not api_key:
-            return "% Error: HUGGINGFACE_API_KEY not set"
+            raise LLMError("HUGGINGFACE_API_KEY not set")
 
         full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
 
@@ -124,17 +142,17 @@ class UnifiedLLMClient:
 
             if response.status_code == 200:
                 result = response.json()
-                if isinstance(result, list) and len(result) > 0:
-                    return result[0].get("generated_text", "% No response")
-                return "% Invalid response format"
+                if isinstance(result, list) and len(result) > 0 and result[0].get("generated_text"):
+                    return result[0]["generated_text"]
+                raise LLMError("Invalid response format")
             else:
-                return f"% API Error: {response.status_code}"
+                raise LLMError(f"API Error: {response.status_code}")
         except Exception as e:
-            return f"% Error: {str(e)}"
+            raise LLMError(str(e))
 
     def _call_gemini(self, prompt, system_prompt, max_tokens, temperature):
         if not genai:
-            return "% Error: google-generativeai not installed"
+            raise LLMError("google-generativeai not installed")
         try:
             api_key = os.getenv("GEMINI_API_KEY")
             if api_key:
@@ -150,11 +168,11 @@ class UnifiedLLMClient:
             )
             return response.text
         except Exception as e:
-            return f"% Error: {str(e)}"
+            raise LLMError(str(e))
 
     def _call_vertexai(self, prompt, system_prompt, max_tokens, temperature):
         if not vertexai or not GenerativeModel:
-            return "% Error: vertexai not installed"
+            raise LLMError("vertexai not installed")
         try:
             project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
             location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
@@ -171,4 +189,4 @@ class UnifiedLLMClient:
             )
             return response.text
         except Exception as e:
-            return f"% Error: {str(e)}"
+            raise LLMError(str(e))

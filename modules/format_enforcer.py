@@ -62,6 +62,7 @@ STRICT RULES:
                     (r"\*\*([^*]+)\*\*", "INVALID: Use \\textbf{} not **text**"),
                     (r"\*([^*]+)\*", "INVALID: Use \\textit{} not *text*"),
                     (r"^-\s", "INVALID: Use \\begin{itemize} not - lists"),
+                    (r"^\-\s", "INVALID: Use \\begin{itemize} not - lists"),
                     (r"```", "INVALID: Use \\begin{verbatim} not ```")
                 ],
                 
@@ -69,7 +70,9 @@ STRICT RULES:
                     (r"^#{3}\s*(.+)$", r"\\section{\1}"),
                     (r"^#{4}\s*(.+)$", r"\\subsection{\1}"),
                     (r"\*\*([^*]+)\*\*", r"\\textbf{\1}"),
-                    (r"\*([^*]+)\*", r"\\textit{\1}")
+                    (r"\*([^*]+)\*", r"\\textit{\1}"),
+                    # Convert Markdown list items to LaTeX item entries
+                    (r"(?m)^-\s+(.+)$", r"\\item \1")
                 ]
             },
             

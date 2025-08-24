@@ -29,7 +29,9 @@ from .file_loader import load_latex_file
 from .chunker import extract_latex_sections, group_chunks_by_section
 from .format_enforcer import FormatEnforcer
 from .llm_client import UnifiedLLMClient
+from .semantic_validator import SemanticValidator, SmartContextManager
 import re
+from datetime import datetime
 
 class DocumentCombiner:
     """Revolutionary Document Augmentation Engine
@@ -57,6 +59,12 @@ class DocumentCombiner:
         
         # LLM client for semantic analysis
         self.llm_client = UnifiedLLMClient()
+        
+        # Semantic validation for content quality
+        self.semantic_validator = SemanticValidator()
+        
+        # Smart context management for coherence
+        self.context_manager = SmartContextManager()
         
         # Available combination strategies (smart_merge is revolutionary)
         self.combination_strategies = {
@@ -275,17 +283,38 @@ Technical Level: [basic/intermediate/advanced]"""
         return assignments
     
     def _analyze_augmentation_batch(self, chunks, original_sections):
-        """Analyze augmentation chunks for assignment to original sections"""
+        """Analyze augmentation chunks for assignment to original sections with semantic validation"""
         chunk_previews = []
-        for i, chunk in enumerate(chunks):
-            preview = f"Chunk {i} (from {chunk['source_section']}): {chunk['content'][:200]}..."
-            chunk_previews.append(preview)
+        validated_chunks = []
         
-        analysis_prompt = f"""Analyze these augmentation chunks and assign each to the most relevant ORIGINAL section.
+        # First, validate each chunk for semantic quality
+        for i, chunk in enumerate(chunks):
+            content = chunk['content']
+            
+            # Semantic validation check
+            is_valid, validation_score = self.semantic_validator.validate_content_quality(content)
+            
+            if is_valid:
+                preview = f"Chunk {i} (from {chunk['source_section']}, quality: {validation_score:.2f}): {content[:200]}..."
+                chunk_previews.append(preview)
+                validated_chunks.append((i, chunk))
+            else:
+                print(f"    Warning: Chunk {i} failed semantic validation (score: {validation_score:.2f})")
+        
+        if not validated_chunks:
+            print("    No chunks passed semantic validation")
+            return {}
+        
+        # Build context-aware analysis prompt
+        context = self.context_manager.build_context(original_sections, [chunk[1]['content'] for chunk in validated_chunks])
+        
+        analysis_prompt = f"""Analyze these semantically validated augmentation chunks and assign each to the most relevant ORIGINAL section.
+
+CONTEXT: {context}
 
 ORIGINAL DOCUMENT SECTIONS: {original_sections}
 
-AUGMENTATION CHUNKS:
+VALIDATED AUGMENTATION CHUNKS:
 {chr(10).join(chunk_previews)}
 
 For each chunk, determine which original section it would best enhance:
@@ -300,8 +329,16 @@ Confidence guidelines:
 Assignments:"""
         
         try:
-            response = self.llm_client.call_llm(analysis_prompt, max_tokens=300)
-            return self._parse_chunk_assignments(response)
+            response = self.llm_client.call_llm(analysis_prompt, max_tokens=400)
+            assignments = self._parse_chunk_assignments(response)
+            
+            # Map back to original chunk indices
+            final_assignments = {}
+            for validated_idx, (original_idx, _) in enumerate(validated_chunks):
+                if validated_idx in assignments:
+                    final_assignments[original_idx] = assignments[validated_idx]
+            
+            return final_assignments
         except Exception as e:
             print(f"    Warning: Augmentation analysis failed: {e}")
             return {}
@@ -417,18 +454,33 @@ Assignments:"""
         return augmented
     
     def _augment_section_content(self, section_name, original_content, augmentation_contents):
-        """Augment original section with additional content"""
+        """Augment original section with additional content using semantic validation"""
         if not augmentation_contents:
             return self._clean_content(original_content)
         
         augmentation_text = '\n\n'.join(augmentation_contents)
         
-        augmentation_prompt = f"""Enhance this original section with additional relevant content:
+        # Validate content coherence before augmentation
+        coherence_score = self.semantic_validator.validate_content_coherence(
+            original_content, augmentation_text
+        )
+        
+        if coherence_score < 0.4:
+            print(f"    Warning: Low coherence score ({coherence_score:.2f}) for {section_name} augmentation")
+            # Use simple concatenation for low coherence content
+            return self._clean_content(original_content + '\n\n' + augmentation_text)
+        
+        # Build context for better integration
+        context = self.context_manager.build_context([section_name], [original_content, augmentation_text])
+        
+        augmentation_prompt = f"""Enhance this original section with additional relevant content using semantic context:
+
+CONTEXT: {context}
 
 ORIGINAL {section_name}:
 {original_content[:1500]}
 
-ADDITIONAL CONTENT TO INTEGRATE:
+ADDITIONAL CONTENT TO INTEGRATE (coherence: {coherence_score:.2f}):
 {augmentation_text[:1500]}
 
 Requirements:
@@ -437,6 +489,7 @@ Requirements:
 3. Maintain coherent flow and structure
 4. Preserve all technical details and equations
 5. Add smooth transitions between original and new content
+6. Ensure semantic consistency throughout
 
 Enhanced {section_name}:"""
         
@@ -444,20 +497,54 @@ Enhanced {section_name}:"""
             enhanced = self.llm_client.call_llm(augmentation_prompt, max_tokens=2000)
             cleaned = self._clean_content(enhanced)
             
-            # Fallback if enhancement is too short or failed
-            if len(cleaned) < len(original_content) * 0.8:
+            # Validate the enhanced content
+            is_valid, quality_score = self.semantic_validator.validate_content_quality(cleaned)
+            
+            if not is_valid or len(cleaned) < len(original_content) * 0.8:
+                print(f"    Warning: Enhanced content failed validation (quality: {quality_score:.2f})")
                 return self._clean_content(original_content + '\n\n' + augmentation_text)
             
+            print(f"    Enhanced {section_name} with quality score: {quality_score:.2f}")
             return cleaned
         except Exception as e:
             print(f"    Warning: Augmentation failed for {section_name}: {e}")
             return self._clean_content(original_content + '\n\n' + augmentation_text)
     
     def _synthesize_chunks(self, section_name, chunk_contents):
-        """Synthesize multiple chunks into coherent section content"""
-        combined_content = '\n\n---CHUNK SEPARATOR---\n\n'.join(chunk_contents)
+        """Synthesize multiple chunks into coherent section content with semantic validation"""
+        # First, validate individual chunks
+        validated_chunks = []
+        for i, content in enumerate(chunk_contents):
+            is_valid, score = self.semantic_validator.validate_content_quality(content)
+            if is_valid:
+                validated_chunks.append(content)
+            else:
+                print(f"    Warning: Chunk {i} in {section_name} failed validation (score: {score:.2f})")
         
-        synthesis_prompt = f"""Synthesize these related chunks into a coherent '{section_name}' section:
+        if not validated_chunks:
+            print(f"    Warning: No valid chunks for {section_name}")
+            return '\n\n'.join([self._clean_content(c) for c in chunk_contents])
+        
+        # Check coherence between chunks
+        if len(validated_chunks) > 1:
+            coherence_scores = []
+            for i in range(len(validated_chunks) - 1):
+                score = self.semantic_validator.validate_content_coherence(
+                    validated_chunks[i], validated_chunks[i + 1]
+                )
+                coherence_scores.append(score)
+            
+            avg_coherence = sum(coherence_scores) / len(coherence_scores)
+            print(f"    Chunk coherence for {section_name}: {avg_coherence:.2f}")
+        
+        combined_content = '\n\n---CHUNK SEPARATOR---\n\n'.join(validated_chunks)
+        
+        # Build context for synthesis
+        context = self.context_manager.build_context([section_name], validated_chunks)
+        
+        synthesis_prompt = f"""Synthesize these semantically validated chunks into a coherent '{section_name}' section:
+
+CONTEXT: {context}
 
 {combined_content[:2000]}
 
@@ -465,8 +552,9 @@ Requirements:
 1. Create unified, flowing narrative
 2. Preserve all technical details and equations exactly
 3. Remove redundancy but keep complementary information
-4. Maintain professional tone
-5. Output only the synthesized content
+4. Maintain professional tone and semantic consistency
+5. Ensure logical flow between concepts
+6. Output only the synthesized content
 
 Synthesized content:"""
         
@@ -474,10 +562,14 @@ Synthesized content:"""
             synthesized = self.llm_client.call_llm(synthesis_prompt, max_tokens=1200)
             cleaned = self._clean_content(synthesized)
             
-            # Fallback if synthesis is too short
-            if len(cleaned) < 100:
-                return '\n\n'.join([self._clean_content(c) for c in chunk_contents])
+            # Validate synthesized content
+            is_valid, quality_score = self.semantic_validator.validate_content_quality(cleaned)
             
+            if not is_valid or len(cleaned) < 100:
+                print(f"    Warning: Synthesized content failed validation (quality: {quality_score:.2f})")
+                return '\n\n'.join([self._clean_content(c) for c in validated_chunks])
+            
+            print(f"    Synthesized {section_name} with quality score: {quality_score:.2f}")
             return cleaned
         except Exception as e:
             print(f"    Warning: Synthesis failed for {section_name}: {e}")
@@ -540,6 +632,7 @@ Synthesized content:"""
             "\\author{Satoshi Nakamoto (with Security Analysis Enhancement)}",
             "\\date{\\today}",
             "",
+            f"% Version: {datetime.utcnow().isoformat()}Z",
             "\\begin{document}",
             "\\maketitle",
             ""
