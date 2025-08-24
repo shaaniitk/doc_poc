@@ -1,7 +1,6 @@
 """Main modular document refactoring script"""
 import sys
 import os
-sys.path.append(os.path.dirname(__file__))
 
 from modules.file_loader import load_latex_file
 from modules.chunker import extract_latex_sections, group_chunks_by_section, llm_enhance_chunking
@@ -14,7 +13,7 @@ from modules.output_manager import OutputManager
 from modules.output_formatter import OutputFormatter
 from config import CHUNKING_STRATEGIES, DOCUMENT_TEMPLATES
 
-def main(source=None, source2=None, combine_strategy="smart_merge", chunking_strategy="semantic", output_format="latex", template="bitcoin_paper"):
+def main(source=None, source2=None, combine_strategy="smart_merge", chunking_strategy="semantic", output_format="latex", template="bitcoin_paper", analysis=None):
     # Handle document combination
     if source2:
         from modules.document_combiner import DocumentCombiner
@@ -140,40 +139,79 @@ def main(source=None, source2=None, combine_strategy="smart_merge", chunking_str
         print(f"Session outputs: {output_manager.session_path}")
         print(f"Processing completed successfully")
         
+        # Run analysis if requested
+        if analysis:
+            run_analysis(analysis)
+            
     except Exception as e:
         error_msg = f"Error: {str(e)}"
         print(error_msg)
         log_entries.append(error_msg)
         output_manager.save_processing_log(log_entries)
 
+def run_analysis(analysis_type):
+    """Run specified analysis using modular framework"""
+    print(f"\n{'='*60}")
+    print(f"RUNNING {analysis_type.upper()} ANALYSIS")
+    print(f"{'='*60}")
+    
+    try:
+        if analysis_type == "comprehensive":
+            from modules.comprehensive_analysis import main as comp_main
+            comp_main()
+        elif analysis_type == "comparison":
+            from modules.comparison_analysis import main as comp_main
+            comp_main()
+        elif analysis_type == "both":
+            from modules.comprehensive_analysis import main as comp_main
+            comp_main()
+            print(f"\n{'='*60}")
+            print("COMPARISON ANALYSIS")
+            print(f"{'='*60}")
+            from modules.comparison_analysis import main as comp_main2
+            comp_main2()
+        else:
+            print(f"Unknown analysis type: {analysis_type}")
+            print("Available: comprehensive, comparison, both")
+    except Exception as e:
+        print(f"Analysis failed: {e}")
+
 if __name__ == "__main__":
     import sys
-    import argparse
-
-    # Import analysis modules
-    from modules import comprehensive_analysis, refactoring_analysis, augmentation_analysis, comparison_analysis, detailed_analysis
-
-    parser = argparse.ArgumentParser(description="Modular Document Refactoring and Analysis")
-    parser.add_argument("--source", help="Source document path or URL")
-    parser.add_argument("--source2", help="Second source document for combination")
-    parser.add_argument("--combine", default="smart_merge", help="Combination strategy")
-    parser.add_argument("--analyze", help="Run analysis. Specify analysis type: comprehensive, refactoring, augmentation, comparison, detailed")
-
-    args = parser.parse_args()
-
-    if args.analyze:
-        print(f"Running {args.analyze} analysis...")
-        if args.analyze == "comprehensive":
-            comprehensive_analysis.main()
-        elif args.analyze == "refactoring":
-            refactoring_analysis.analyze_refactoring()
-        elif args.analyze == "augmentation":
-            augmentation_analysis.analyze_augmentation()
-        elif args.analyze == "comparison":
-            comparison_analysis.main()
-        elif args.analyze == "detailed":
-            detailed_analysis.main()
-        else:
-            print(f"Unknown analysis type: {args.analyze}")
-    else:
-        main(source=args.source, source2=args.source2, combine_strategy=args.combine)
+    
+    # Command line usage examples:
+    # python modular_refactor.py
+    # python modular_refactor.py --source https://example.com/paper.tex
+    # python modular_refactor.py --source arxiv:2301.12345
+    # python modular_refactor.py --analysis comprehensive
+    # python modular_refactor.py --analysis comparison
+    # python modular_refactor.py --analysis both
+    # python modular_refactor.py --source bitcoin_whitepaper.tex --source2 blockchain_security.tex --combine smart_merge --analysis comprehensive
+    
+    source = None
+    source2 = None
+    combine_strategy = "smart_merge"
+    analysis = None
+    
+    if len(sys.argv) > 1:
+        if '--source' in sys.argv:
+            idx = sys.argv.index('--source')
+            if idx + 1 < len(sys.argv):
+                source = sys.argv[idx + 1]
+        
+        if '--source2' in sys.argv:
+            idx = sys.argv.index('--source2')
+            if idx + 1 < len(sys.argv):
+                source2 = sys.argv[idx + 1]
+        
+        if '--combine' in sys.argv:
+            idx = sys.argv.index('--combine')
+            if idx + 1 < len(sys.argv):
+                combine_strategy = sys.argv[idx + 1]
+        
+        if '--analysis' in sys.argv:
+            idx = sys.argv.index('--analysis')
+            if idx + 1 < len(sys.argv):
+                analysis = sys.argv[idx + 1]
+    
+    main(source=source, source2=source2, combine_strategy=combine_strategy, analysis=analysis)

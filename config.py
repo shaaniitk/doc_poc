@@ -2,7 +2,7 @@
 
 # LLM Configuration
 LLM_CONFIG = {
-    "provider": "mistral",  # Options: "mistral", "openai", "huggingface", "local"
+    "provider": "mistral",  # Options: "mistral", "openai", "huggingface", "gemini", "vertexai"
     "model": "mistral-small-latest",
     "api_key_env": "MISTRAL_API_KEY",
     "max_tokens": 2048,
@@ -17,7 +17,18 @@ LLM_PROVIDERS = {
         "models": ["mistral-small-latest", "mistral-medium-latest", "mistral-large-latest"]
     },
     "openai": {
-        "url": "https://api.openai.com/v1/chat/completions", 
+        "url": "https://api.openai.com/v1/chat/completions",
+        "models": ["gpt-3.5-turbo", "gpt-4", "gpt-4-turbo"]
+    },
+    "huggingface": {
+        "url": "https://api-inference.huggingface.co/models/",
+        "models": ["mistralai/Mistral-7B-Instruct-v0.1", "google/gemma-7b-it"]
+    },
+    "gemini": {
+        "models": ["gemini-pro", "gemini-1.0-pro", "gemini-1.5-pro-latest"]
+    },
+    "vertexai": {
+        "models": ["gemini-1.0-pro", "gemini-1.5-pro-latest"]
     }
 }
 
