@@ -2,9 +2,9 @@
 
 # LLM Configuration
 LLM_CONFIG = {
-    "provider": "mistral",  # Options: "mistral", "openai", "huggingface", "gemini", "vertexai"
-    "model": "mistral-small-latest",
-    "api_key_env": "MISTRAL_API_KEY",
+    "provider": "gemini",  # Options: "mistral", "openai", "huggingface", "gemini", "vertexai"
+    "model": "gemini-1.5-flash",
+    "api_key_env": "GEMINI_API_KEY",
     "max_tokens": 2048,
     "temperature": 0.2,
     "timeout": 30
@@ -28,7 +28,7 @@ LLM_PROVIDERS = {
         "models": ["gemini-pro", "gemini-1.0-pro", "gemini-1.5-pro-latest"]
     },
     "vertexai": {
-        "models": ["gemini-1.0-pro", "gemini-1.5-pro-latest"]
+        "models": ["gemini-1.0-pro", "gemini-1.5-pro-latest", "gemini-2.5-pro"]
     }
 }
 
