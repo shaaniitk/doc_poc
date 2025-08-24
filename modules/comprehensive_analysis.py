@@ -4,11 +4,10 @@ Comprehensive Analysis of Document Processing and Combination
 
 import os
 import re
-from document_processor_v2 import DocumentProcessor
 
 def analyze_file_sizes():
     """Analyze original file sizes"""
-    print("📊 Original File Analysis")
+    print("Original File Analysis")
     print("=" * 50)
     
     files = ['bitcoin_whitepaper.tex', 'test_document2.tex', 'blockchain_security.tex']
@@ -22,7 +21,7 @@ def analyze_file_sizes():
                 chars = len(content)
                 words = len(content.split())
             
-            print(f"📄 {file}:")
+            print(f"{file}:")
             print(f"  Size: {size:,} bytes")
             print(f"  Lines: {lines:,}")
             print(f"  Characters: {chars:,}")
@@ -30,107 +29,116 @@ def analyze_file_sizes():
             print()
 
 def test_single_document_processing():
-    """Test single document processing"""
-    print("🔄 Single Document Processing Test")
+    """Test single document processing using modular framework"""
+    print("Single Document Processing Test")
     print("=" * 50)
     
-    processor = DocumentProcessor('config_v2.yaml')
-    
     try:
-        result = processor.process_document(
-            source='bitcoin_whitepaper.tex',
-            template='bitcoin'
-        )
+        # Import modular components
+        from .file_loader import load_latex_file
+        from .chunker import extract_latex_sections, group_chunks_by_section
+        from .section_mapper import assign_chunks_to_skeleton
+        from .llm_handler import ContextualLLMHandler
+        from .output_manager import OutputManager
         
-        print("✅ Single document processing completed")
-        print(f"📄 Final document: {result['final_document']}")
-        print(f"📊 Sections processed: {result['processed_sections']}")
-        print(f"📁 Session path: {result['session_path']}")
-        
-        # Analyze output
-        if os.path.exists(result['final_document']):
-            size = os.path.getsize(result['final_document'])
-            with open(result['final_document'], 'r', encoding='utf-8') as f:
-                content = f.read()
-                lines = len(content.split('\n'))
-                chars = len(content)
+        source_file = 'bitcoin_whitepaper.tex'
+        if not os.path.exists(source_file):
+            print(f"[ERROR] Source file not found: {source_file}")
+            return None
             
-            print(f"📈 Output Analysis:")
-            print(f"  Size: {size:,} bytes")
-            print(f"  Lines: {lines:,}")
-            print(f"  Characters: {chars:,}")
+        # Process using modular framework
+        content = load_latex_file(source_file)
+        chunks = extract_latex_sections(content)
+        grouped_chunks = group_chunks_by_section(chunks)
+        assignments = assign_chunks_to_skeleton(grouped_chunks)
         
-        return result
+        # Initialize handlers
+        llm_handler = ContextualLLMHandler()
+        output_manager = OutputManager()
+        
+        # Process sections
+        processed_sections = {}
+        for section_name, section_chunks in assignments.items():
+            if section_chunks:
+                combined_content = '\n\n'.join([chunk['content'] for chunk in section_chunks])
+                result = llm_handler.process_section(section_name, combined_content, "Process this section.")
+                processed_sections[section_name] = result
+        
+        # Save final document
+        final_path = output_manager.aggregate_document(processed_sections)
+        
+        print("[OK] Single document processing completed")
+        return {
+            'final_document': final_path,
+            'processed_sections': len(processed_sections),
+            'session_path': output_manager.session_path
+        }
         
     except Exception as e:
-        print(f"❌ Single document processing failed: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"[ERROR] Single document processing failed: {e}")
         return None
 
 def test_document_combination():
-    """Test document combination with different strategies"""
-    print("\n🔄 Document Combination Tests")
+    """Test document combination using modular framework"""
+    print("\nDocument Combination Tests")
     print("=" * 50)
     
-    processor = DocumentProcessor('config_v2.yaml')
-    
-    # Test combinations
-    test_cases = [
-        ('bitcoin_whitepaper.tex', 'blockchain_security.tex', 'smart_merge'),
-        ('bitcoin_whitepaper.tex', 'blockchain_security.tex', 'merge'),
-        ('bitcoin_whitepaper.tex', 'blockchain_security.tex', 'append'),
-    ]
-    
-    results = []
-    
-    for source1, source2, strategy in test_cases:
-        print(f"\n🧪 Testing: {strategy} strategy")
-        print(f"📄 Documents: {source1} + {source2}")
+    try:
+        # Import modular components
+        from .document_combiner import DocumentCombiner
+        from .output_manager import OutputManager
         
-        try:
-            result = processor.combine_documents(
-                source1=source1,
-                source2=source2,
-                strategy=strategy,
-                template='bitcoin'
+        source1 = 'bitcoin_whitepaper.tex'
+        source2 = 'blockchain_security.tex'
+        
+        if not os.path.exists(source1) or not os.path.exists(source2):
+            print(f"[ERROR] Source files not found")
+            return []
+        
+        results = []
+        strategies = ['smart_merge', 'append']
+        
+        for strategy in strategies:
+            print(f"\nTesting: {strategy} strategy")
+            
+            combiner = DocumentCombiner('latex')
+            output_manager = OutputManager()
+            
+            combined_content, format_issues = combiner.combine_documents(
+                source1, source2, strategy, 'latex'
             )
             
-            print(f"✅ {strategy} completed successfully")
-            print(f"📄 Final document: {result['final_document']}")
-            print(f"📊 Sections: {result['processed_sections']}")
+            final_path = output_manager.save_section_output(f"combined_{strategy}", combined_content)
             
-            # Analyze combined output
-            if os.path.exists(result['final_document']):
-                size = os.path.getsize(result['final_document'])
-                with open(result['final_document'], 'r', encoding='utf-8') as f:
+            # Analyze output
+            if os.path.exists(final_path):
+                size = os.path.getsize(final_path)
+                with open(final_path, 'r', encoding='utf-8') as f:
                     content = f.read()
                     lines = len(content.split('\n'))
                     chars = len(content)
                 
-                print(f"📈 Combined Output:")
-                print(f"  Size: {size:,} bytes")
-                print(f"  Lines: {lines:,}")
-                print(f"  Characters: {chars:,}")
-                
-                result['output_stats'] = {
-                    'size': size,
-                    'lines': lines,
-                    'characters': chars
+                result = {
+                    'final_document': final_path,
+                    'processed_sections': len(re.findall(r'\\section\{.*?\}', content)),
+                    'output_stats': {
+                        'size': size,
+                        'lines': lines,
+                        'characters': chars
+                    }
                 }
+                results.append((strategy, result))
+                print(f"[OK] {strategy} completed successfully")
             
-            results.append((strategy, result))
-            
-        except Exception as e:
-            print(f"❌ {strategy} failed: {e}")
-            import traceback
-            traceback.print_exc()
-    
-    return results
+        return results
+        
+    except Exception as e:
+        print(f"[ERROR] Document combination failed: {e}")
+        return []
 
 def analyze_content_preservation(original_files, processed_file):
     """Analyze content preservation in detail"""
-    print(f"\n🔍 Content Preservation Analysis")
+    print(f"\nContent Preservation Analysis")
     print("=" * 50)
     
     # Read original files
@@ -172,7 +180,7 @@ def analyze_content_preservation(original_files, processed_file):
     processed_chars = len(processed_clean)
     change_percent = ((processed_chars - original_chars) / original_chars) * 100 if original_chars > 0 else 0
     
-    print(f"📊 Character Analysis:")
+    print(f"Character Analysis:")
     print(f"  Original: {original_chars:,} characters")
     print(f"  Processed: {processed_chars:,} characters")
     print(f"  Change: {change_percent:+.1f}%")
@@ -185,19 +193,19 @@ def analyze_content_preservation(original_files, processed_file):
         'figures': r'\\begin\{figure\}.*?\\end\{figure\}'
     }
     
-    print(f"\n📋 LaTeX Environment Preservation:")
+    print(f"\nLaTeX Environment Preservation:")
     for env_name, pattern in patterns.items():
         original_count = len(re.findall(pattern, original_content, re.DOTALL))
         processed_count = len(re.findall(pattern, processed_content, re.DOTALL))
         
         if original_count > 0:
             preservation_rate = (processed_count / original_count) * 100
-            print(f"  {env_name.title()}: {original_count} → {processed_count} ({preservation_rate:.1f}% preserved)")
+            print(f"  {env_name.title()}: {original_count} -> {processed_count} ({preservation_rate:.1f}% preserved)")
         else:
-            print(f"  {env_name.title()}: {original_count} → {processed_count} (N/A)")
+            print(f"  {env_name.title()}: {original_count} -> {processed_count} (N/A)")
     
     # Check for specific content
-    print(f"\n🔍 Specific Content Check:")
+    print(f"\nSpecific Content Check:")
     
     key_content = [
         ('Bitcoin equations', r'q_z = \\begin\{cases\}'),
@@ -212,16 +220,16 @@ def analyze_content_preservation(original_files, processed_file):
         original_found = bool(re.search(pattern, original_content, re.IGNORECASE))
         processed_found = bool(re.search(pattern, processed_content, re.IGNORECASE))
         
-        status = "✅" if (original_found and processed_found) or (not original_found and not processed_found) else "❌"
+        status = "[OK]" if (original_found and processed_found) or (not original_found and not processed_found) else "[ERROR]"
         print(f"  {status} {content_name}: {'Found' if processed_found else 'Missing'}")
 
 def compare_combination_strategies(results):
     """Compare different combination strategies"""
-    print(f"\n📊 Combination Strategy Comparison")
+    print(f"\nCombination Strategy Comparison")
     print("=" * 50)
     
     if not results:
-        print("❌ No results to compare")
+        print("[ERROR] No results to compare")
         return
     
     print(f"{'Strategy':<15} {'Size (KB)':<12} {'Lines':<8} {'Characters':<12} {'Sections':<10}")
@@ -237,7 +245,7 @@ def compare_combination_strategies(results):
 
 def main():
     """Run comprehensive analysis"""
-    print("🧪 Comprehensive Document Processing Analysis")
+    print("Comprehensive Document Processing Analysis")
     print("=" * 60)
     
     # 1. Analyze original files
@@ -254,19 +262,19 @@ def main():
     
     # 5. Detailed content preservation analysis
     if single_result:
-        print(f"\n🔍 Single Document Content Preservation:")
+        print(f"\nSingle Document Content Preservation:")
         analyze_content_preservation(['bitcoin_whitepaper.tex'], single_result['final_document'])
     
     if combination_results:
         for strategy, result in combination_results:
             if 'final_document' in result:
-                print(f"\n🔍 {strategy.title()} Strategy Content Preservation:")
+                print(f"\n{strategy.title()} Strategy Content Preservation:")
                 analyze_content_preservation(
                     ['bitcoin_whitepaper.tex', 'blockchain_security.tex'], 
                     result['final_document']
                 )
     
-    print(f"\n🎯 Analysis Complete!")
+    print(f"\nAnalysis Complete!")
     print("Check the outputs/ directory for detailed results and individual section files.")
 
 if __name__ == "__main__":

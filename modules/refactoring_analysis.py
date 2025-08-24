@@ -13,7 +13,7 @@ from datetime import datetime
 def analyze_refactoring():
     """Analyze refactoring results and save to log file"""
     
-    print("🔧 REFACTORING ANALYSIS STARTING...")
+    print("REFACTORING ANALYSIS STARTING...")
     
     # Files to analyze (using available files in export)
     original_file = "bitcoin_whitepaper.tex"  # Using as example unstructured input
@@ -27,8 +27,8 @@ def analyze_refactoring():
                 refactored_files.append(os.path.join("latest_run_output", file))
     
     if not refactored_files:
-        print("⚠️ No refactored output found, using augmented output as example")
-        output_file = "augmented_output.tex"
+        print("[WARNING] No refactored output found, using augmented output as example")
+        output_file = "export/augmented_output.tex"
     else:
         output_file = refactored_files[0]
     
@@ -43,11 +43,11 @@ def analyze_refactoring():
     
     # Check if files exist
     if not os.path.exists(original_file):
-        print(f"❌ Original file not found: {original_file}")
+        print(f"[ERROR] Original file not found: {original_file}")
         return
         
     if not os.path.exists(output_file):
-        print(f"❌ Output file not found: {output_file}")
+        print(f"[ERROR] Output file not found: {output_file}")
         return
     
     # Read files
@@ -57,7 +57,7 @@ def analyze_refactoring():
     with open(output_file, 'r', encoding='utf-8') as f:
         output_content = f.read()
     
-    print("✅ Files loaded successfully")
+    print("[OK] Files loaded successfully")
     
     # Analyze documents
     original_stats = analyze_document_structure(original_content, "Original")
@@ -94,7 +94,7 @@ def analyze_refactoring():
     with open(log_filename, 'w', encoding='utf-8') as f:
         json.dump(results, f, indent=2, ensure_ascii=False)
     
-    print(f"📊 Analysis saved to: {log_filename}")
+    print(f"Analysis saved to: {log_filename}")
     
     return results
 
@@ -122,7 +122,7 @@ def analyze_document_structure(content, doc_type):
         "has_bibliography": bool(re.search(r'\\begin\{thebibliography\}', content))
     }
     
-    print(f"📊 {doc_type} Document Structure:")
+    print(f"{doc_type} Document Structure:")
     print(f"  Characters: {stats['total_characters']:,}")
     print(f"  Sections: {stats['sections']}")
     print(f"  Subsections: {stats['subsections']}")
@@ -394,7 +394,7 @@ def print_refactoring_summary(results):
     """Print a summary of the refactoring analysis results"""
     
     print("\n" + "="*60)
-    print("🔧 REFACTORING ANALYSIS SUMMARY")
+    print("REFACTORING ANALYSIS SUMMARY")
     print("="*60)
     
     metrics = results["refactoring_metrics"]
@@ -402,31 +402,31 @@ def print_refactoring_summary(results):
     formatting = results["formatting_analysis"]
     quality = results["overall_quality_score"]
     
-    print(f"🎯 Overall Quality Score: {quality}/100")
+    print(f"Overall Quality Score: {quality}/100")
     print()
     
-    print("📈 Key Improvements:")
+    print("Key Improvements:")
     print(f"  Structure Improvement: {metrics['structure_improvement_score']:.1f}/100")
     print(f"  Academic Formatting: {formatting['academic_formatting_score']:.1f}/100")
     print(f"  Organization: {metrics['organization_improvement_score']:.1f}/100")
     print(f"  Content Preservation: {metrics['content_preservation_percent']:.1f}%")
     print()
     
-    print("📋 Document Transformation:")
+    print("Document Transformation:")
     original = results["original_stats"]
     output = results["output_stats"]
-    print(f"  Sections: {original['sections']} → {output['sections']} ({structure['sections_added']:+d})")
+    print(f"  Sections: {original['sections']} -> {output['sections']} ({structure['sections_added']:+d})")
     print(f"  Academic Elements Added:")
-    if output['has_title'] and not original['has_title']: print("    ✅ Title")
-    if output['has_author'] and not original['has_author']: print("    ✅ Author")
-    if output['has_abstract'] and not original['has_abstract']: print("    ✅ Abstract")
-    if output['has_bibliography'] and not original['has_bibliography']: print("    ✅ Bibliography")
+    if output['has_title'] and not original['has_title']: print("    [+] Title")
+    if output['has_author'] and not original['has_author']: print("    [+] Author")
+    if output['has_abstract'] and not original['has_abstract']: print("    [+] Abstract")
+    if output['has_bibliography'] and not original['has_bibliography']: print("    [+] Bibliography")
     print()
     
-    print("🎨 Formatting Improvements:")
-    print(f"  LaTeX Structure: {'✅' if formatting['has_documentclass'] else '❌'}")
-    print(f"  Proper Sectioning: {'✅' if formatting['proper_sectioning'] else '❌'}")
-    print(f"  Math Formatting: {'✅' if formatting['proper_math_formatting'] else '❌'}")
+    print("Formatting Improvements:")
+    print(f"  LaTeX Structure: {'[OK]' if formatting['has_documentclass'] else '[ERROR]'}")
+    print(f"  Proper Sectioning: {'[OK]' if formatting['proper_sectioning'] else '[ERROR]'}")
+    print(f"  Math Formatting: {'[OK]' if formatting['proper_math_formatting'] else '[ERROR]'}")
     
     print("\n" + "="*60)
 

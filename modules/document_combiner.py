@@ -1,21 +1,21 @@
-"""🚀 REVOLUTIONARY DOCUMENT COMBINER MODULE
+"""REVOLUTIONARY DOCUMENT COMBINER MODULE
 
 This module implements the breakthrough chunk-level LLM-dependent document augmentation
 system. Unlike traditional section-level merging, this system:
 
-🧠 SEMANTIC INTELLIGENCE:
+SEMANTIC INTELLIGENCE:
 - Analyzes individual chunks for content meaning and purpose
 - Maps chunks to original document sections based on semantic relevance
 - Preserves original document structure while intelligently adding content
 - Creates new sections only when content truly doesn't fit existing structure
 
-🎯 KEY INNOVATIONS:
+KEY INNOVATIONS:
 - Chunk-level granularity instead of coarse section-level mapping
 - LLM-driven relevance scoring with confidence thresholds
 - Conservative augmentation that respects document architecture
 - Batch processing for efficiency while maintaining quality
 
-📊 PROCESSING FLOW:
+PROCESSING FLOW:
 1. Extract chunks from augmentation document (preserves original intact)
 2. LLM analyzes each chunk against original document sections
 3. Assigns chunks based on semantic relevance (confidence > 0.6)
@@ -32,38 +32,38 @@ from .llm_client import UnifiedLLMClient
 import re
 
 class DocumentCombiner:
-    """🎯 Revolutionary Document Augmentation Engine
+    """Revolutionary Document Augmentation Engine
     
     This class implements the most advanced document combination system available,
     using chunk-level semantic analysis to intelligently augment documents while
     preserving their original structure and integrity.
     
-    🧠 INTELLIGENCE FEATURES:
+    INTELLIGENCE FEATURES:
     - Semantic chunk analysis using LLM
     - Confidence-based assignment decisions
     - Original document structure preservation
     - Conservative new section creation
     - Batch processing optimization
     
-    🔧 SUPPORTED STRATEGIES:
+    SUPPORTED STRATEGIES:
     - smart_merge: Revolutionary chunk-level LLM-dependent augmentation
     - merge: Traditional section-level merging
     - interleave: Alternating content integration
     - append: Sequential document combination
     """
     def __init__(self, output_format="latex"):
-        # 🎨 Format enforcement for output quality
+        # Format enforcement for output quality
         self.format_enforcer = FormatEnforcer(output_format)
         
-        # 🧠 LLM client for semantic analysis
+        # LLM client for semantic analysis
         self.llm_client = UnifiedLLMClient()
         
-        # 🚀 Available combination strategies (smart_merge is revolutionary)
+        # Available combination strategies (smart_merge is revolutionary)
         self.combination_strategies = {
             "merge": self._merge_documents,
             "interleave": self._interleave_documents,
             "append": self._append_documents,
-            "smart_merge": self._llm_enhanced_smart_merge  # 🌟 THE GAME CHANGER
+            "smart_merge": self._llm_enhanced_smart_merge  # THE GAME CHANGER
         }
     
     def combine_documents(self, doc1_path, doc2_path, strategy="smart_merge", output_format="latex"):
@@ -147,50 +147,50 @@ class DocumentCombiner:
         return self._format_combined_document(combined)
     
     def _llm_enhanced_smart_merge(self, doc1_sections, doc2_sections):
-        """🚀 REVOLUTIONARY CHUNK-LEVEL AUGMENTATION ENGINE
+        """REVOLUTIONARY CHUNK-LEVEL AUGMENTATION ENGINE
         
         This is the breakthrough function that implements semantic chunk-level
         document augmentation. Unlike primitive section-level merging, this:
         
-        🧠 PRESERVES ORIGINAL STRUCTURE:
+        PRESERVES ORIGINAL STRUCTURE:
         - Keeps doc1 (original) structure completely intact
         - Only adds content where semantically relevant
         - Creates new sections conservatively for orphaned content
         
-        🎯 SEMANTIC INTELLIGENCE:
+        SEMANTIC INTELLIGENCE:
         - LLM analyzes each chunk individually for relevance
         - Confidence scoring determines assignment decisions
         - Batch processing for efficiency
         
-        📊 THREE-PHASE PROCESS:
+        THREE-PHASE PROCESS:
         1. Chunk-Level Analysis: Extract and analyze augmentation chunks
         2. Content Augmentation: Map chunks to original sections
         3. Document Assembly: Generate final enhanced document
         
         This represents the future of document processing!
         """
-        print("🧠 Phase 1: Augmentation Analysis...")
+        print("Phase 1: Augmentation Analysis...")
         
-        # 🏗️ Preserve original document structure (CRITICAL: no modification)
+        # Preserve original document structure (CRITICAL: no modification)
         original_structure = self._get_original_document_structure(doc1_sections)
         
-        # 📊 Extract chunks only from augmentation document (doc2)
+        # Extract chunks only from augmentation document (doc2)
         # This ensures original document remains untouched
         augmentation_chunks = self._extract_augmentation_chunks(doc2_sections)
         
-        print(f"  📈 Augmenting original {len(original_structure)} sections with {len(augmentation_chunks)} new chunks")
+        print(f"  Augmenting original {len(original_structure)} sections with {len(augmentation_chunks)} new chunks")
         
-        # 🎯 Phase 1: Map augmentation chunks to original sections using LLM
+        # Phase 1: Map augmentation chunks to original sections using LLM
         # This is where the magic happens - semantic relevance analysis
         augmentation_assignments = self._map_augmentation_to_original(augmentation_chunks, original_structure)
         
-        print("🔄 Phase 2: Content Augmentation...")
+        print("Phase 2: Content Augmentation...")
         
-        # 🔧 Phase 2: Augment original sections with semantically relevant content
+        # Phase 2: Augment original sections with semantically relevant content
         # Original content is preserved, new content is intelligently integrated
         augmented_document = self._augment_original_sections(doc1_sections, augmentation_assignments)
         
-        # 📝 Phase 3: Format and assemble the final enhanced document
+        # Phase 3: Format and assemble the final enhanced document
         return self._format_combined_document(augmented_document)
     
     def _analyze_document_structure(self, sections, doc_name):
@@ -261,14 +261,14 @@ Technical Level: [basic/intermediate/advanced]"""
                         'chunk': chunk,
                         'confidence': assignment['confidence']
                     })
-                    print(f"    ➕ {chunk['chunk_id']} -> {assignment['section']} ({assignment['confidence']:.2f})")
+                    print(f"    + {chunk['chunk_id']} -> {assignment['section']} ({assignment['confidence']:.2f})")
                 else:
                     orphaned_chunks.append(chunk)
-                    print(f"    ❓ {chunk['chunk_id']} -> ORPHANED ({assignment['confidence']:.2f})")
+                    print(f"    ? {chunk['chunk_id']} -> ORPHANED ({assignment['confidence']:.2f})")
         
         # Handle orphaned chunks - create minimal new sections
         if orphaned_chunks:
-            print(f"  🆕 Creating minimal sections for {len(orphaned_chunks)} orphaned chunks...")
+            print(f"  Creating minimal sections for {len(orphaned_chunks)} orphaned chunks...")
             new_sections = self._create_minimal_new_sections(orphaned_chunks)
             assignments.update(new_sections)
         
@@ -303,7 +303,7 @@ Assignments:"""
             response = self.llm_client.call_llm(analysis_prompt, max_tokens=300)
             return self._parse_chunk_assignments(response)
         except Exception as e:
-            print(f"    ⚠️ Augmentation analysis failed: {e}")
+            print(f"    Warning: Augmentation analysis failed: {e}")
             return {}
     
     def _parse_chunk_assignments(self, response):
@@ -358,7 +358,7 @@ Assignments:"""
                 'chunk': chunk,
                 'confidence': 1.0
             } for chunk in chunks]
-            print(f"    🆕 Created new section: {new_section_name} ({len(chunks)} chunks)")
+            print(f"    Created new section: {new_section_name} ({len(chunks)} chunks)")
         
         return new_sections
     
@@ -401,18 +401,18 @@ Assignments:"""
                     section_name, original_content, augmentation_contents
                 )
                 
-                print(f"    ➕ {section_name}: Original + {len(augmentation_contents)} augmentations -> {len(augmented[section_name])} chars")
+                print(f"    + {section_name}: Original + {len(augmentation_contents)} augmentations -> {len(augmented[section_name])} chars")
             else:
                 # No augmentation, keep original
                 augmented[section_name] = self._clean_content(original_content)
-                print(f"    ➡️ {section_name}: Original only -> {len(augmented[section_name])} chars")
+                print(f"    -> {section_name}: Original only -> {len(augmented[section_name])} chars")
         
         # Add any new sections from orphaned chunks
         for section_name, chunks_data in augmentation_assignments.items():
             if section_name not in original_sections and chunks_data:
                 chunk_contents = [item['chunk']['content'] for item in chunks_data]
                 augmented[section_name] = '\n\n'.join([self._clean_content(c) for c in chunk_contents])
-                print(f"    🆕 {section_name}: New section -> {len(augmented[section_name])} chars")
+                print(f"    NEW {section_name}: New section -> {len(augmented[section_name])} chars")
         
         return augmented
     
@@ -450,7 +450,7 @@ Enhanced {section_name}:"""
             
             return cleaned
         except Exception as e:
-            print(f"    ⚠️ Augmentation failed for {section_name}: {e}")
+            print(f"    Warning: Augmentation failed for {section_name}: {e}")
             return self._clean_content(original_content + '\n\n' + augmentation_text)
     
     def _synthesize_chunks(self, section_name, chunk_contents):
@@ -480,7 +480,7 @@ Synthesized content:"""
             
             return cleaned
         except Exception as e:
-            print(f"    ⚠️ Synthesis failed for {section_name}: {e}")
+            print(f"    Warning: Synthesis failed for {section_name}: {e}")
             return '\n\n'.join([self._clean_content(c) for c in chunk_contents])
     
 
@@ -490,12 +490,12 @@ Synthesized content:"""
 
     
     def _clean_content(self, content):
-        """🧹 CONTENT CLEANING AND FORMATTING ENGINE
+        """CONTENT CLEANING AND FORMATTING ENGINE
         
         Performs comprehensive content cleaning to ensure high-quality output.
         Fixes common formatting issues and standardizes content presentation.
         
-        🔧 CLEANING OPERATIONS:
+        CLEANING OPERATIONS:
         1. Remove processing artifacts and markers
         2. Fix common LaTeX formatting issues
         3. Standardize list formatting
@@ -504,25 +504,25 @@ Synthesized content:"""
         
         This ensures professional, compilation-ready output.
         """
-        # 🗑️ Remove processing artifacts and source markers
+        # Remove processing artifacts and source markers
         content = re.sub(r'=== From .+ ===\n', '', content)
         
-        # 🔧 Fix common LaTeX formatting issues
+        # Fix common LaTeX formatting issues
         content = content.replace('\\textit{', '\\times ')  # Fix multiplication symbols
         content = content.replace('- ', '\\item ')          # Fix list items
         
-        # 🛡️ Escape special characters properly
+        # Escape special characters properly
         content = re.sub(r'(?<!\\)%', '\\%', content)  # Escape % not preceded by \
         
-        # 🧹 Clean up excessive whitespace
+        # Clean up excessive whitespace
         content = re.sub(r'\n\s*\n\s*\n', '\n\n', content)  # Max 2 consecutive newlines
         
-        # ✨ Return cleaned and trimmed content
+        # Return cleaned and trimmed content
         return content.strip()
     
     def _format_combined_document(self, combined_sections):
         """Format augmented sections into complete document"""
-        print("📝 Phase 3: Document Assembly...")
+        print("Phase 3: Document Assembly...")
         
         # Create document structure
         document_parts = []

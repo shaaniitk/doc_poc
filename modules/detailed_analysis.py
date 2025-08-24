@@ -8,7 +8,7 @@ import re
 def analyze_combination_results():
     """Analyze the combination results in detail"""
     
-    print("📊 DETAILED DOCUMENT COMBINATION ANALYSIS")
+    print("DETAILED DOCUMENT COMBINATION ANALYSIS")
     print("=" * 60)
     
     # Original files analysis
@@ -20,7 +20,7 @@ def analyze_combination_results():
     total_original_size = 0
     total_original_chars = 0
     
-    print("📄 ORIGINAL FILES ANALYSIS:")
+    print("ORIGINAL FILES ANALYSIS:")
     for file in original_files.keys():
         if os.path.exists(file):
             size = os.path.getsize(file)
@@ -58,15 +58,27 @@ def analyze_combination_results():
             print(f"    Lists: {enumerates}")
             print()
     
-    print(f"📊 COMBINED ORIGINAL TOTALS:")
+    print(f"COMBINED ORIGINAL TOTALS:")
     print(f"  Total Size: {total_original_size:,} bytes")
     print(f"  Total Characters: {total_original_chars:,}")
     
-    # Analyze combined output
-    combined_file = 'outputs/20250727_140400/final_document.tex'
+    # Analyze combined output - check multiple possible locations (text files only)
+    possible_combined_files = [
+        'outputs/20250727_140400/final_document.tex',
+        'export/augmented_output.tex',
+        'augmented_output.tex',
+        'final_document.tex',
+        'combined_document.tex'
+    ]
     
-    if os.path.exists(combined_file):
-        print(f"\n📄 COMBINED OUTPUT ANALYSIS:")
+    combined_file = None
+    for file_path in possible_combined_files:
+        if os.path.exists(file_path):
+            combined_file = file_path
+            break
+    
+    if combined_file and os.path.exists(combined_file):
+        print(f"\nCOMBINED OUTPUT ANALYSIS ({combined_file}):")
         
         size = os.path.getsize(combined_file)
         with open(combined_file, 'r', encoding='utf-8') as f:
@@ -93,7 +105,7 @@ def analyze_combination_results():
         print(f"  Sections: {sections}")
         
         # Calculate preservation metrics
-        print(f"\n📈 PRESERVATION ANALYSIS:")
+        print(f"\nPRESERVATION ANALYSIS:")
         
         size_change = ((size - total_original_size) / total_original_size) * 100
         char_change = ((chars - total_original_chars) / total_original_chars) * 100
@@ -106,12 +118,12 @@ def analyze_combination_results():
         total_orig_code = sum(f['code_blocks'] for f in original_files.values())
         total_orig_lists = sum(f['enumerates'] for f in original_files.values())
         
-        print(f"  Equations: {total_orig_equations} → {equations} ({((equations/total_orig_equations)*100 if total_orig_equations > 0 else 0):.1f}% preserved)")
-        print(f"  Code blocks: {total_orig_code} → {code_blocks} ({((code_blocks/total_orig_code)*100 if total_orig_code > 0 else 0):.1f}% preserved)")
-        print(f"  Lists: {total_orig_lists} → {enumerates} ({((enumerates/total_orig_lists)*100 if total_orig_lists > 0 else 0):.1f}% preserved)")
+        print(f"  Equations: {total_orig_equations} -> {equations} ({((equations/total_orig_equations)*100 if total_orig_equations > 0 else 0):.1f}% preserved)")
+        print(f"  Code blocks: {total_orig_code} -> {code_blocks} ({((code_blocks/total_orig_code)*100 if total_orig_code > 0 else 0):.1f}% preserved)")
+        print(f"  Lists: {total_orig_lists} -> {enumerates} ({((enumerates/total_orig_lists)*100 if total_orig_lists > 0 else 0):.1f}% preserved)")
         
         # Content quality analysis
-        print(f"\n🔍 CONTENT QUALITY ANALYSIS:")
+        print(f"\nCONTENT QUALITY ANALYSIS:")
         
         # Check for key Bitcoin content
         bitcoin_content = [
@@ -130,33 +142,33 @@ def analyze_combination_results():
             print(f"  {content_name}: {matches} mentions")
         
         # Check for structural issues
-        print(f"\n⚠️  STRUCTURAL ISSUES:")
+        print(f"\nSTRUCTURAL ISSUES:")
         
         # Check for duplicate \end{document}
         end_docs = len(re.findall(r'\\end\{document\}', content))
         if end_docs > 1:
-            print(f"  ❌ Multiple \\end{{document}} found: {end_docs}")
+            print(f"  [ERROR] Multiple \\end{{document}} found: {end_docs}")
         else:
-            print(f"  ✅ Single \\end{{document}} found")
+            print(f"  [OK] Single \\end{{document}} found")
         
         # Check for orphaned LaTeX commands
         orphaned_commands = re.findall(r'^(equation|enumerate|verbatim)$', content, re.MULTILINE)
         if orphaned_commands:
-            print(f"  ⚠️  Orphaned LaTeX commands: {len(orphaned_commands)}")
+            print(f"  [WARNING] Orphaned LaTeX commands: {len(orphaned_commands)}")
         else:
-            print(f"  ✅ No orphaned LaTeX commands")
+            print(f"  [OK] No orphaned LaTeX commands")
         
         # Check for proper section structure
         if sections > 0:
-            print(f"  ✅ Document has proper section structure: {sections} sections")
+            print(f"  [OK] Document has proper section structure: {sections} sections")
         else:
-            print(f"  ❌ No proper sections found")
+            print(f"  [ERROR] No proper sections found")
     
     else:
-        print(f"\n❌ Combined file not found: {combined_file}")
+        print(f"\n[ERROR] No combined files found in any of the expected locations")
     
     # Overall quality assessment
-    print(f"\n🏆 OVERALL QUALITY ASSESSMENT:")
+    print(f"\nOVERALL QUALITY ASSESSMENT:")
     
     if os.path.exists(combined_file):
         quality_score = 100
@@ -184,16 +196,20 @@ def analyze_combination_results():
             quality_score -= 10
             print(f"  -10 points: Structural issues (multiple \\end{{document}})")
         
-        print(f"\n🎯 FINAL QUALITY SCORE: {quality_score}/100")
+        print(f"\nFINAL QUALITY SCORE: {quality_score}/100")
         
         if quality_score >= 90:
-            print("  ✅ EXCELLENT - High quality combination")
+            print("  [EXCELLENT] High quality combination")
         elif quality_score >= 75:
-            print("  ⚠️  GOOD - Acceptable quality with minor issues")
+            print("  [GOOD] Acceptable quality with minor issues")
         elif quality_score >= 60:
-            print("  ⚠️  FAIR - Usable but needs improvement")
+            print("  [FAIR] Usable but needs improvement")
         else:
-            print("  ❌ POOR - Significant quality issues")
+            print("  [POOR] Significant quality issues")
+
+def main():
+    """Main function for detailed analysis"""
+    analyze_combination_results()
 
 if __name__ == "__main__":
-    analyze_combination_results()
+    main()
