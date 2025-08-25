@@ -1,194 +1,152 @@
-"""Intelligent document aggregation with coherence optimization"""
+"""
+State-of-the-Art Document Polishing Engine.
+
+This module acts as a final, optional post-processing step to enhance the global
+coherence and consistency of the entire document. It operates on the fully
+processed hierarchical document tree.
+
+Key Features:
+- Operates on the Document Tree: All functions traverse the hierarchical structure.
+- Global Terminology Consistency: Extracts key terms from the whole document and
+  ensures they are used consistently in every node.
+- Coherence Optimization: Inserts smooth transition sentences between adjacent
+  sections and subsections to improve narrative flow.
+"""
+
 from .llm_client import UnifiedLLMClient
+from .error_handler import robust_llm_call
+from config import PROMPTS
+import copy
+import logging
 
-class IntelligentAggregator:
-    def __init__(self):
-        self.llm_client = UnifiedLLMClient()
+# Configure logging
+log = logging.getLogger(__name__)
+
+class DocumentPolisher:
+    """
+    Applies global, document-wide enhancements to a processed tree.
+    """
+    def __init__(self, llm_client: UnifiedLLMClient):
+        self.llm_client = llm_client
+
+    def polish_tree(self, processed_tree):
+        """
+
+        The main entry point to apply all polishing passes to the tree.
+        """
+        polished_tree = copy.deepcopy(processed_tree)
         
-    def coherence_optimization(self, processed_sections):
-        """Optimize document coherence through intelligent transitions"""
-        optimized_sections = {}
-        section_order = list(processed_sections.keys())
+        log.info("Applying Polishing Pass 1: Terminology Consistency...")
+        polished_tree = self._terminology_consistency_pass(polished_tree)
         
-        for i, section_name in enumerate(section_order):
-            content = processed_sections[section_name]
+        log.info("Applying Polishing Pass 2: Coherence Optimization (Transitions)...")
+        polished_tree = self._coherence_optimization_pass(polished_tree)
+        
+        return polished_tree
+
+    # --- Pass 1: Terminology Consistency ---
+
+    def _terminology_consistency_pass(self, tree):
+        # 1. Extract all text content from the tree.
+        full_text = self._extract_all_text_from_tree(tree)
+         # 2. Add a guard clause for robustness. If no processable text was found, skip this pass.
+        if not full_text.strip():
+            log.warning("No processable content found in the tree. Skipping terminology consistency pass.")
+            return tree
+        # 3. Use an LLM to identify the key technical terms.
+        key_terms_str = self._llm_extract_key_terms(full_text)
+        key_terms_list = [term.strip() for term in key_terms_str.split(',')]
+        log.info(f"Identified Key Terms: {key_terms_list}")
+        
+        # 4. Recursively traverse the tree and standardize the content in each node.
+        return self._standardize_terms_recursive(tree, key_terms_list)
+
+    def _extract_all_text_from_tree(self, node_level):
+        """Recursively concatenates all 'processed_content' from the tree."""
+        text = ""
+        for node_data in node_level.values():
+            # This check gracefully handles special, non-dictionary items like the 'Orphaned_Content' list.
+            if not isinstance(node_data, dict):
+                continue
+
+            if node_data.get('processed_content'):
+                text += node_data['processed_content'] + "\n\n"
+            if node_data.get('subsections'):
+                text += self._extract_all_text_from_tree(node_data['subsections'])
+        return text
+
+    @robust_llm_call(max_retries=1)
+    def _llm_extract_key_terms(self, full_text):
+        """LLM call to identify key terms from the entire document."""
+        prompt = PROMPTS['term_extraction'].format(
+            full_text_excerpt=full_text[:4000] # Use a large excerpt
+        )
+        return self.llm_client.call_llm([{"role": "user", "content": prompt}])
+
+    def _standardize_terms_recursive(self, node_level, key_terms_list):
+        """Recursively traverses the tree, standardizing text in each node."""
+        for node_data in node_level.values():
+            content = node_data.get('processed_content')
+            if content:
+                node_data['processed_content'] = self._llm_standardize_text(content, key_terms_list)
             
-            # Add intelligent transitions
-            if i > 0:
-                prev_section = section_order[i-1]
-                transition = self._generate_transition(
-                    processed_sections[prev_section], 
-                    content, 
-                    prev_section, 
-                    section_name
+            if node_data.get('subsections'):
+                self._standardize_terms_recursive(node_data['subsections'], key_terms_list)
+        return node_level
+
+    @robust_llm_call(max_retries=1)
+    def _llm_standardize_text(self, text_content, key_terms_list):
+        """LLM call to standardize a single piece of text."""
+        prompt = PROMPTS['term_standardization'].format(
+            key_terms_list=key_terms_list,
+            text_content=text_content
+        )
+        return self.llm_client.call_llm([{"role": "user", "content": prompt}])
+
+    # --- Pass 2: Coherence Optimization (Transitions) ---
+
+    def _coherence_optimization_pass(self, tree):
+        """Initiates the recursive process to add transition sentences."""
+        return self._add_transitions_recursive(tree)
+
+    def _add_transitions_recursive(self, node_level):
+        """
+        Recursively traverses the tree, adding transitions between sibling nodes.
+        """
+        # Convert node dictionary to a list of (title, data) tuples to work with indices
+        nodes_as_list = list(node_level.items())
+        
+        # Iterate through adjacent pairs of nodes at the current level
+        for i in range(len(nodes_as_list) - 1):
+            # Get the current node and the next node
+            prev_title, prev_data = nodes_as_list[i]
+            current_title, current_data = nodes_as_list[i+1]
+            
+            prev_content = prev_data.get('processed_content', '')
+            current_content = current_data.get('processed_content', '')
+
+            if prev_content and current_content:
+                transition = self._llm_generate_transition(
+                    prev_title, prev_content, current_title, current_content
                 )
-                content = transition + "\n\n" + content
-            
-            # Add forward references if needed
-            if i < len(section_order) - 1:
-                next_section = section_order[i+1]
-                content = self._add_forward_references(
-                    content, 
-                    processed_sections[next_section], 
-                    next_section
-                )
-            
-            optimized_sections[section_name] = content
+                # Prepend the transition to the content of the second node
+                current_data['processed_content'] = transition + "\n\n" + current_content
+                log.info(f"Added transition between '{prev_title}' and '{current_title}'")
         
-        return optimized_sections
+        # After processing siblings, recurse into the children of each node
+        for _, node_data in nodes_as_list:
+            if node_data.get('subsections'):
+                self._add_transitions_recursive(node_data['subsections'])
+                
+        return node_level
     
-    def _generate_transition(self, prev_content, current_content, prev_section, current_section):
-        """Generate smooth transitions between sections"""
-        transition_prompt = f"""Create a 1-2 sentence transition from '{prev_section}' to '{current_section}'.
-
-Previous section ending: {prev_content[-300:]}
-Current section beginning: {current_content[:300]}
-
-The transition should:
-1. Connect the ideas smoothly
-2. Maintain academic tone
-3. Be concise and natural"""
-        
-        return self.llm_client.call_llm(transition_prompt, max_tokens=100)
-    
-    def _add_forward_references(self, content, next_content, next_section):
-        """Add forward references where appropriate"""
-        reference_prompt = f"""Should this section reference the upcoming '{next_section}'? 
-If yes, suggest a brief forward reference (1 sentence). If no, respond 'NONE'.
-
-Current content: {content[-400:]}
-Next section preview: {next_content[:200]}"""
-        
-        reference = self.llm_client.call_llm(reference_prompt, max_tokens=50)
-        
-        if reference.strip() != 'NONE' and len(reference.strip()) > 10:
-            return content + "\n\n" + reference.strip()
-        
-        return content
-    
-    def terminology_consistency(self, processed_sections):
-        """Ensure consistent terminology throughout document"""
-        # Extract key terms
-        key_terms = self._extract_key_terms(processed_sections)
-        
-        # Standardize usage
-        standardized_sections = {}
-        for section_name, content in processed_sections.items():
-            standardized_sections[section_name] = self._standardize_terminology(content, key_terms)
-        
-        return standardized_sections
-    
-    def _extract_key_terms(self, sections):
-        """Extract key technical terms from all sections"""
-        all_content = '\n'.join(sections.values())
-        
-        extraction_prompt = f"""Extract 10-15 key technical terms from this document. 
-Return as comma-separated list.
-
-Content: {all_content[:2000]}"""
-        
-        terms_text = self.llm_client.call_llm(extraction_prompt, max_tokens=200)
-        return [term.strip() for term in terms_text.split(',') if term.strip()]
-    
-    def _standardize_terminology(self, content, key_terms):
-        """Standardize terminology usage in content"""
-        standardization_prompt = f"""Ensure consistent usage of these key terms: {', '.join(key_terms)}
-
-Review and correct any inconsistent terminology in:
-
-{content}
-
-Maintain the same meaning while ensuring consistency."""
-        
-        return self.llm_client.call_llm(standardization_prompt)
-    
-    def document_flow_optimization(self, sections):
-        """Optimize overall document flow and structure"""
-        flow_analysis = self._analyze_document_flow(sections)
-        
-        optimization_prompt = f"""Based on this flow analysis, suggest structural improvements:
-
-{flow_analysis}
-
-Current sections: {list(sections.keys())}
-
-Suggest:
-1. Section reordering (if needed)
-2. Content redistribution
-3. Missing connections"""
-        
-        suggestions = self.llm_client.call_llm(optimization_prompt, max_tokens=300)
-        
-        return self._apply_flow_optimizations(sections, suggestions)
-    
-    def _analyze_document_flow(self, sections):
-        """Analyze logical flow of document"""
-        section_summaries = {}
-        for name, content in sections.items():
-            summary_prompt = f"Summarize the main purpose and key points of this section in 2 sentences:\n\n{content[:800]}"
-            section_summaries[name] = self.llm_client.call_llm(summary_prompt, max_tokens=100)
-        
-        flow_prompt = f"""Analyze the logical flow of these sections:
-
-{section_summaries}
-
-Rate the flow quality and identify any issues."""
-        
-        return self.llm_client.call_llm(flow_prompt, max_tokens=200)
-    
-    def _apply_flow_optimizations(self, sections, suggestions):
-        """Apply flow optimization suggestions"""
-        # For now, return original sections
-        # In practice, this would parse suggestions and apply changes
-        return sections
-    
-    def quality_assurance_pass(self, final_document):
-        """Final quality assurance pass"""
-        qa_checks = {
-            'completeness': self._check_completeness(final_document),
-            'consistency': self._check_consistency(final_document),
-            'clarity': self._check_clarity(final_document),
-            'technical_accuracy': self._check_technical_accuracy(final_document)
-        }
-        
-        return qa_checks
-    
-    def _check_completeness(self, document):
-        """Check document completeness"""
-        completeness_prompt = f"""Check if this document is complete and well-structured:
-
-{document[:2000]}
-
-Rate completeness (0.0-1.0) and list any missing elements."""
-        
-        return self.llm_client.call_llm(completeness_prompt, max_tokens=150)
-    
-    def _check_consistency(self, document):
-        """Check internal consistency"""
-        consistency_prompt = f"""Check for internal consistency issues:
-
-{document[:2000]}
-
-Identify any contradictions or inconsistencies."""
-        
-        return self.llm_client.call_llm(consistency_prompt, max_tokens=150)
-    
-    def _check_clarity(self, document):
-        """Check clarity and readability"""
-        clarity_prompt = f"""Assess clarity and readability:
-
-{document[:2000]}
-
-Rate clarity (0.0-1.0) and suggest improvements."""
-        
-        return self.llm_client.call_llm(clarity_prompt, max_tokens=150)
-    
-    def _check_technical_accuracy(self, document):
-        """Check technical accuracy"""
-        accuracy_prompt = f"""Review technical accuracy:
-
-{document[:2000]}
-
-Identify any technical errors or unclear explanations."""
-        
-        return self.llm_client.call_llm(accuracy_prompt, max_tokens=150)
+    @robust_llm_call(max_retries=1)
+    def _llm_generate_transition(self, prev_title, prev_content, current_title, current_content):
+        """LLM call to generate a single transition sentence."""
+        prompt = PROMPTS['section_transition'].format(
+            prev_section_title=prev_title,
+            prev_section_ending=prev_content[-300:], # Last 300 chars
+            current_section_title=current_title,
+            current_section_beginning=current_content[:300] # First 300 chars
+        )
+        return self.llm_client.call_llm([{"role": "user", "content": prompt}])

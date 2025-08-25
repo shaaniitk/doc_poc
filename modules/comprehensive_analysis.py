@@ -4,11 +4,14 @@ Comprehensive Analysis of Document Processing and Combination
 
 import os
 import re
+import logging
+
+log = logging.getLogger(__name__)
 
 def analyze_file_sizes():
     """Analyze original file sizes"""
-    print("Original File Analysis")
-    print("=" * 50)
+    log.info("Original File Analysis")
+    log.info("=" * 50)
     
     files = ['bitcoin_whitepaper.tex', 'test_document2.tex', 'blockchain_security.tex']
     
@@ -21,17 +24,17 @@ def analyze_file_sizes():
                 chars = len(content)
                 words = len(content.split())
             
-            print(f"{file}:")
-            print(f"  Size: {size:,} bytes")
-            print(f"  Lines: {lines:,}")
-            print(f"  Characters: {chars:,}")
-            print(f"  Words: {words:,}")
-            print()
+            log.info(f"{file}:")
+            log.info(f"  Size: {size:,} bytes")
+            log.info(f"  Lines: {lines:,}")
+            log.info(f"  Characters: {chars:,}")
+            log.info(f"  Words: {words:,}")
+            log.info("")
 
 def test_single_document_processing():
     """Test single document processing using modular framework"""
-    print("Single Document Processing Test")
-    print("=" * 50)
+    log.info("Single Document Processing Test")
+    log.info("=" * 50)
     
     try:
         # Import modular components
@@ -43,7 +46,7 @@ def test_single_document_processing():
         
         source_file = 'bitcoin_whitepaper.tex'
         if not os.path.exists(source_file):
-            print(f"[ERROR] Source file not found: {source_file}")
+            log.error(f"[ERROR] Source file not found: {source_file}")
             return None
             
         # Process using modular framework
@@ -67,7 +70,7 @@ def test_single_document_processing():
         # Save final document
         final_path = output_manager.aggregate_document(processed_sections)
         
-        print("[OK] Single document processing completed")
+        log.info("[OK] Single document processing completed")
         return {
             'final_document': final_path,
             'processed_sections': len(processed_sections),
@@ -75,13 +78,13 @@ def test_single_document_processing():
         }
         
     except Exception as e:
-        print(f"[ERROR] Single document processing failed: {e}")
+        log.error(f"[ERROR] Single document processing failed: {e}")
         return None
 
 def test_document_combination():
     """Test document combination using modular framework"""
-    print("\nDocument Combination Tests")
-    print("=" * 50)
+    log.info("Document Combination Tests")
+    log.info("=" * 50)
     
     try:
         # Import modular components
@@ -92,14 +95,14 @@ def test_document_combination():
         source2 = 'blockchain_security.tex'
         
         if not os.path.exists(source1) or not os.path.exists(source2):
-            print(f"[ERROR] Source files not found")
+            log.error(f"[ERROR] Source files not found")
             return []
         
         results = []
         strategies = ['smart_merge', 'append']
         
         for strategy in strategies:
-            print(f"\nTesting: {strategy} strategy")
+            log.info(f"Testing: {strategy} strategy")
             
             combiner = DocumentCombiner('latex')
             output_manager = OutputManager()
@@ -128,18 +131,18 @@ def test_document_combination():
                     }
                 }
                 results.append((strategy, result))
-                print(f"[OK] {strategy} completed successfully")
+                log.info(f"[OK] {strategy} completed successfully")
             
         return results
         
     except Exception as e:
-        print(f"[ERROR] Document combination failed: {e}")
+        log.error(f"[ERROR] Document combination failed: {e}")
         return []
 
 def analyze_content_preservation(original_files, processed_file):
     """Analyze content preservation in detail"""
-    print(f"\nContent Preservation Analysis")
-    print("=" * 50)
+    log.info(f"Content Preservation Analysis")
+    log.info("=" * 50)
     
     # Read original files
     original_content = ""
@@ -153,7 +156,7 @@ def analyze_content_preservation(original_files, processed_file):
     
     # Read processed file
     if not os.path.exists(processed_file):
-        print(f"❌ Processed file not found: {processed_file}")
+        log.error(f"❌ Processed file not found: {processed_file}")
         return
     
     with open(processed_file, 'r', encoding='utf-8') as f:
@@ -180,10 +183,10 @@ def analyze_content_preservation(original_files, processed_file):
     processed_chars = len(processed_clean)
     change_percent = ((processed_chars - original_chars) / original_chars) * 100 if original_chars > 0 else 0
     
-    print(f"Character Analysis:")
-    print(f"  Original: {original_chars:,} characters")
-    print(f"  Processed: {processed_chars:,} characters")
-    print(f"  Change: {change_percent:+.1f}%")
+    log.info(f"Character Analysis:")
+    log.info(f"  Original: {original_chars:,} characters")
+    log.info(f"  Processed: {processed_chars:,} characters")
+    log.info(f"  Change: {change_percent:+.1f}%")
     
     # Count LaTeX environments
     patterns = {
@@ -193,19 +196,19 @@ def analyze_content_preservation(original_files, processed_file):
         'figures': r'\\begin\{figure\}.*?\\end\{figure\}'
     }
     
-    print(f"\nLaTeX Environment Preservation:")
+    log.info(f"LaTeX Environment Preservation:")
     for env_name, pattern in patterns.items():
         original_count = len(re.findall(pattern, original_content, re.DOTALL))
         processed_count = len(re.findall(pattern, processed_content, re.DOTALL))
         
         if original_count > 0:
             preservation_rate = (processed_count / original_count) * 100
-            print(f"  {env_name.title()}: {original_count} -> {processed_count} ({preservation_rate:.1f}% preserved)")
+            log.info(f"  {env_name.title()}: {original_count} -> {processed_count} ({preservation_rate:.1f}% preserved)")
         else:
-            print(f"  {env_name.title()}: {original_count} -> {processed_count} (N/A)")
+            log.info(f"  {env_name.title()}: {original_count} -> {processed_count} (N/A)")
     
     # Check for specific content
-    print(f"\nSpecific Content Check:")
+    log.info(f"Specific Content Check:")
     
     key_content = [
         ('Bitcoin equations', r'q_z = \\begin\{cases\}'),
@@ -221,32 +224,32 @@ def analyze_content_preservation(original_files, processed_file):
         processed_found = bool(re.search(pattern, processed_content, re.IGNORECASE))
         
         status = "[OK]" if (original_found and processed_found) or (not original_found and not processed_found) else "[ERROR]"
-        print(f"  {status} {content_name}: {'Found' if processed_found else 'Missing'}")
+        log.info(f"  {status} {content_name}: {'Found' if processed_found else 'Missing'}")
 
 def compare_combination_strategies(results):
     """Compare different combination strategies"""
-    print(f"\nCombination Strategy Comparison")
-    print("=" * 50)
+    log.info(f"Combination Strategy Comparison")
+    log.info("=" * 50)
     
     if not results:
-        print("[ERROR] No results to compare")
+        log.error("[ERROR] No results to compare")
         return
     
-    print(f"{'Strategy':<15} {'Size (KB)':<12} {'Lines':<8} {'Characters':<12} {'Sections':<10}")
-    print("-" * 65)
+    log.info(f"{'Strategy':<15} {'Size (KB)':<12} {'Lines':<8} {'Characters':<12} {'Sections':<10}")
+    log.info("-" * 65)
     
     for strategy, result in results:
         if 'output_stats' in result:
             stats = result['output_stats']
             size_kb = stats['size'] / 1024
-            print(f"{strategy:<15} {size_kb:<12.1f} {stats['lines']:<8} {stats['characters']:<12,} {result['processed_sections']:<10}")
+            log.info(f"{strategy:<15} {size_kb:<12.1f} {stats['lines']:<8} {stats['characters']:<12,} {result['processed_sections']:<10}")
         else:
-            print(f"{strategy:<15} {'N/A':<12} {'N/A':<8} {'N/A':<12} {'N/A':<10}")
+            log.info(f"{strategy:<15} {'N/A':<12} {'N/A':<8} {'N/A':<12} {'N/A':<10}")
 
 def main():
     """Run comprehensive analysis"""
-    print("Comprehensive Document Processing Analysis")
-    print("=" * 60)
+    log.info("Comprehensive Document Processing Analysis")
+    log.info("=" * 60)
     
     # 1. Analyze original files
     analyze_file_sizes()
@@ -262,20 +265,20 @@ def main():
     
     # 5. Detailed content preservation analysis
     if single_result:
-        print(f"\nSingle Document Content Preservation:")
+        log.info(f"Single Document Content Preservation:")
         analyze_content_preservation(['bitcoin_whitepaper.tex'], single_result['final_document'])
     
     if combination_results:
         for strategy, result in combination_results:
             if 'final_document' in result:
-                print(f"\n{strategy.title()} Strategy Content Preservation:")
+                log.info(f"{strategy.title()} Strategy Content Preservation:")
                 analyze_content_preservation(
                     ['bitcoin_whitepaper.tex', 'blockchain_security.tex'], 
                     result['final_document']
                 )
     
-    print(f"\nAnalysis Complete!")
-    print("Check the outputs/ directory for detailed results and individual section files.")
+    log.info(f"Analysis Complete!")
+    log.info("Check the outputs/ directory for detailed results and individual section files.")
 
 if __name__ == "__main__":
     main()

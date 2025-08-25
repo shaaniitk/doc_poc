@@ -4,11 +4,15 @@ Compare single document vs multi-document processing results
 
 import os
 import re
+import logging
+
+# Setup logging
+log = logging.getLogger(__name__)
 
 def test_single_document():
     """Test single document processing using modular framework"""
-    print("SINGLE DOCUMENT PROCESSING TEST")
-    print("=" * 50)
+    log.info("SINGLE DOCUMENT PROCESSING TEST")
+    log.info("=" * 50)
     
     try:
         # Import modular components
@@ -19,7 +23,7 @@ def test_single_document():
         
         source_file = 'bitcoin_whitepaper.tex'
         if not os.path.exists(source_file):
-            print(f"[ERROR] Source file not found: {source_file}")
+            log.error(f"Source file not found: {source_file}")
             return None
             
         # Process document
@@ -36,17 +40,17 @@ def test_single_document():
                 for chunk in section_chunks:
                     processed_content += chunk['content'] + "\n\n"
         
-        print("[OK] Single document processing completed")
+        log.info("Single document processing completed")
         return analyze_document_quality('bitcoin_whitepaper.tex', processed_content, "Single Document")
         
     except Exception as e:
-        print(f"[ERROR] Single document processing failed: {e}")
+        log.error(f"Single document processing failed: {e}")
         return None
 
 def test_combination():
     """Test document combination using modular framework"""
-    print("\nDOCUMENT COMBINATION TEST")
-    print("=" * 50)
+    log.info("DOCUMENT COMBINATION TEST")
+    log.info("=" * 50)
     
     try:
         # Import modular components
@@ -56,7 +60,7 @@ def test_combination():
         source2 = 'blockchain_security.tex'
         
         if not os.path.exists(source1) or not os.path.exists(source2):
-            print(f"[ERROR] Source files not found")
+            log.error("Source files not found")
             return None
         
         combiner = DocumentCombiner('latex')
@@ -64,17 +68,17 @@ def test_combination():
             source1, source2, 'smart_merge', 'latex'
         )
         
-        print("[OK] Document combination completed")
+        log.info("Document combination completed")
         return analyze_document_quality([source1, source2], combined_content, "Combined Documents")
         
     except Exception as e:
-        print(f"[ERROR] Document combination failed: {e}")
+        log.error(f"Document combination failed: {e}")
         return None
 
 def analyze_document_quality(original_files, processed_content, test_name):
     """Analyze document quality in detail"""
     
-    print(f"\n📊 {test_name.upper()} ANALYSIS:")
+    log.info(f"📊 {test_name.upper()} ANALYSIS:")
     
     # Handle single file vs multiple files
     if isinstance(original_files, str):
@@ -114,12 +118,12 @@ def analyze_document_quality(original_files, processed_content, test_name):
     
     size_change = ((processed_stats['size'] - original_stats['size']) / original_stats['size']) * 100
     
-    print(f"  Original size: {original_stats['size']:,} characters")
-    print(f"  Processed size: {processed_stats['size']:,} characters")
-    print(f"  Size change: {size_change:+.1f}%")
-    print(f"  Equations: {original_stats['equations']} -> {processed_stats['equations']} ({preservation['equations']:.1f}% preserved)")
-    print(f"  Code blocks: {original_stats['code_blocks']} -> {processed_stats['code_blocks']} ({preservation['code_blocks']:.1f}% preserved)")
-    print(f"  Lists: {original_stats['lists']} -> {processed_stats['lists']} ({preservation['lists']:.1f}% preserved)")
+    log.info(f"  Original size: {original_stats['size']:,} characters")
+    log.info(f"  Processed size: {processed_stats['size']:,} characters")
+    log.info(f"  Size change: {size_change:+.1f}%")
+    log.info(f"  Equations: {original_stats['equations']} -> {processed_stats['equations']} ({preservation['equations']:.1f}% preserved)")
+    log.info(f"  Code blocks: {original_stats['code_blocks']} -> {processed_stats['code_blocks']} ({preservation['code_blocks']:.1f}% preserved)")
+    log.info(f"  Lists: {original_stats['lists']} -> {processed_stats['lists']} ({preservation['lists']:.1f}% preserved)")
     
     # Check for structural issues
     structural_issues = []
@@ -139,9 +143,9 @@ def analyze_document_quality(original_files, processed_content, test_name):
     if sections == 0:
         structural_issues.append("No proper sections")
     
-    print(f"  Structural issues: {len(structural_issues)}")
+    log.info(f"  Structural issues: {len(structural_issues)}")
     for issue in structural_issues:
-        print(f"    - {issue}")
+        log.info(f"    - {issue}")
     
     # Calculate quality score
     quality_score = 100
@@ -163,7 +167,7 @@ def analyze_document_quality(original_files, processed_content, test_name):
     # Deduct for structural issues
     quality_score -= len(structural_issues) * 5
     
-    print(f"  Quality Score: {quality_score}/100")
+    log.info(f"  Quality Score: {quality_score}/100")
     
     return {
         'test_name': test_name,
@@ -178,8 +182,8 @@ def analyze_document_quality(original_files, processed_content, test_name):
 def identify_combination_issues():
     """Identify specific issues with document combination using modular framework"""
     
-    print("\nCOMBINATION ISSUE ANALYSIS:")
-    print("=" * 50)
+    log.info("COMBINATION ISSUE ANALYSIS:")
+    log.info("=" * 50)
     
     try:
         # Import modular components
@@ -194,16 +198,16 @@ def identify_combination_issues():
         bitcoin_chunks = extract_latex_sections(bitcoin_content)
         security_chunks = extract_latex_sections(security_content)
         
-        print(f"Chunk Analysis:")
-        print(f"  Bitcoin chunks: {len(bitcoin_chunks)}")
-        print(f"  Security chunks: {len(security_chunks)}")
+        log.info(f"Chunk Analysis:")
+        log.info(f"  Bitcoin chunks: {len(bitcoin_chunks)}")
+        log.info(f"  Security chunks: {len(security_chunks)}")
         
         # Group by sections
         bitcoin_sections = group_chunks_by_section(bitcoin_chunks)
         security_sections = group_chunks_by_section(security_chunks)
         
-        print(f"  Bitcoin sections: {len(bitcoin_sections)}")
-        print(f"  Security sections: {len(security_sections)}")
+        log.info(f"  Bitcoin sections: {len(bitcoin_sections)}")
+        log.info(f"  Security sections: {len(security_sections)}")
         
         # Section overlap analysis
         bitcoin_section_names = set(bitcoin_sections.keys())
@@ -213,19 +217,19 @@ def identify_combination_issues():
         bitcoin_only = bitcoin_section_names - security_section_names
         security_only = security_section_names - bitcoin_section_names
         
-        print(f"\nSection Overlap Analysis:")
-        print(f"  Common sections: {len(common_sections)}")
-        print(f"  Bitcoin-only sections: {len(bitcoin_only)}")
-        print(f"  Security-only sections: {len(security_only)}")
+        log.info(f"Section Overlap Analysis:")
+        log.info(f"  Common sections: {len(common_sections)}")
+        log.info(f"  Bitcoin-only sections: {len(bitcoin_only)}")
+        log.info(f"  Security-only sections: {len(security_only)}")
         
     except Exception as e:
-        print(f"[ERROR] Analysis failed: {e}")
+        log.error(f"Analysis failed: {e}")
 
 def main():
     """Run comparison analysis"""
     
-    print("SINGLE vs MULTI-DOCUMENT PROCESSING COMPARISON")
-    print("=" * 60)
+    log.info("SINGLE vs MULTI-DOCUMENT PROCESSING COMPARISON")
+    log.info("=" * 60)
     
     # Analyze existing files
     files_to_check = [
@@ -235,15 +239,15 @@ def main():
         'export/combined_document.pdf'
     ]
     
-    print(f"\nFILE ANALYSIS:")
+    log.info(f"FILE ANALYSIS:")
     for file in files_to_check:
         if os.path.exists(file):
             size = os.path.getsize(file)
-            print(f"  [OK] {file}: {size:,} bytes")
+            log.info(f"  [OK] {file}: {size:,} bytes")
         else:
-            print(f"  [ERROR] {file}: Not found")
+            log.error(f"  {file}: Not found")
     
-    print(f"\nAnalysis complete!")
+    log.info(f"Analysis complete!")
 
 if __name__ == "__main__":
     main()

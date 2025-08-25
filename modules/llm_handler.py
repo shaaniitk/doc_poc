@@ -1,141 +1,155 @@
-"""LLM interaction module with semantic validation and smart context management"""
-import os
-from .llm_client import UnifiedLLMClient
-from .format_enforcer import FormatEnforcer
-from .error_handler import robust_llm_call, LLMError
-from .semantic_validator import SemanticValidator, SmartContextManager
+"""
+State-of-the-Art Hierarchical LLM Processing Agent.
 
-class ContextualLLMHandler:
-    def __init__(self, provider=None, model=None, output_format="latex"):
-        self.document_context = ""
-        self.section_contexts = {}
-        self.llm_client = UnifiedLLMClient(provider, model)
+This module contains the core engine of the document refactoring system.
+The HierarchicalProcessingAgent traverses a document's tree structure, building
+deeply contextual prompts at each node and applying advanced, multi-pass
+processing strategies to ensure the highest quality output.
+
+It leverages the FormatEnforcer utility to sanitize all LLM outputs, ensuring
+syntactic correctness before they are stored in the processed tree.
+"""
+
+from .llm_client import UnifiedLLMClient
+from .error_handler import robust_llm_call
+from .format_enforcer import FormatEnforcer  # <-- IMPORT THE ENFORCER
+from .semantic_validator import SemanticValidator  # <-- IMPORT SEMANTIC VALIDATOR
+from config import PROMPTS
+import re
+import logging
+
+# Configure logging
+log = logging.getLogger(__name__)
+
+class HierarchicalProcessingAgent:
+    """
+    Traverses a document tree to refactor content node by node with hierarchical context.
+    """
+    def __init__(self, llm_client: UnifiedLLMClient, output_format="latex"):
+        self.llm_client = llm_client
+        self.full_tree = None
+        self.global_context = ""
+        # 1. INSTANTIATE THE FORMAT ENFORCER
         self.format_enforcer = FormatEnforcer(output_format)
-        
-        # Semantic validation and smart context management
         self.semantic_validator = SemanticValidator()
-        self.context_manager = SmartContextManager()
+
+    def process_tree(self, document_tree):
+        """
+        Main entry point to start the processing of the entire document tree.
+        """
+        self.full_tree = document_tree
+        self.global_context = document_tree.get("Abstract", {}).get('description', 
+                                "A peer-to-peer electronic cash system.")
         
-        # Track processing quality metrics
-        self.quality_metrics = {
-            'sections_processed': 0,
-            'validation_failures': 0,
-            'coherence_scores': [],
-            'quality_scores': []
-        }
-    
+        return self._recursive_process_node(document_tree, parent_context="", path=[])
+
+    def _recursive_process_node(self, current_level_nodes, parent_context, path):
+        """
+        The core recursive method that traverses the tree and processes each node.
+        """
+        processed_level = {}
+
+        for title, node_data in current_level_nodes.items():
+            # This check gracefully handles special, non-dictionary items
+            # like the 'Orphaned_Content' list.
+            if not isinstance(node_data, dict):
+                continue # Skip to the next item in the loop
+            
+            current_path = path + [title]
+            log.info(f"Processing Node: {' -> '.join(current_path)}")
+
+            node_content = "\n\n".join([chunk['content'] for chunk in node_data.get('chunks', [])])
+
+            if node_content:
+                context = {
+                    "node_path": " -> ".join(current_path),
+                    "global_context": self.global_context,
+                    "parent_context": parent_context,
+                    "node_content": node_content
+                }
+                
+                refactored_content = self._strategy_refactor_content(context, node_data.get('prompt', ''))
+                is_valid, score = self.semantic_validator.validate_content_preservation(
+                    original=node_content,
+                    processed=refactored_content,
+                    threshold=0.6 # Use a reasonable threshold
+                )
+                log.info(f"Semantic Similarity Score: {score:.2f}")
+                if not is_valid:
+                    log.warning(f"Low semantic similarity for '{' -> '.join(current_path)}'. May have deviated from original meaning.")
+                
+                if any(keyword in title for keyword in ["Introduction", "Conclusion", "Abstract"]):
+                    log.info(f"Applying advanced self-critique pass for '{title}'...")
+                    refactored_content = self._llm_self_critique_pass(context, refactored_content)
+
+                node_data['processed_content'] = refactored_content
+            else:
+                node_data['processed_content'] = ""
+
+            if node_data.get('subsections'):
+                processed_subsections = self._recursive_process_node(
+                    node_data['subsections'],
+                    parent_context=node_data.get('processed_content', ''), # Pass clean content down
+                    path=current_path
+                )
+                node_data['subsections'] = processed_subsections
+            
+            processed_level[title] = node_data
+        
+        return processed_level
+
     @robust_llm_call(max_retries=2)
-    def process_section(self, section_name, content, prompt):
-        """Process a section with semantic validation and smart context management"""
-        self.quality_metrics['sections_processed'] += 1
+    def _strategy_refactor_content(self, context, node_prompt):
+        """
+        Performs the primary content refactoring and immediately enforces format compliance.
+        """
+        system_prompt = node_prompt or "You are a professional technical editor."
+        user_prompt = PROMPTS['hierarchical_refactor'].format(**context)
         
-        # Pre-processing validation
-        is_valid_input, input_quality = self.semantic_validator.validate_content_quality(content)
-        if not is_valid_input:
-            print(f"Warning: Input content for {section_name} has low quality (score: {input_quality:.2f})")
-            self.quality_metrics['validation_failures'] += 1
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
         
-        # Build smart context using context manager
-        smart_context = self.context_manager.build_context(
-            [section_name], 
-            [content] + list(self.section_contexts.values())
+        # 2. INTEGRATION POINT
+        # Get the raw output from the LLM
+        raw_output = self.llm_client.call_llm(messages)
+        
+        # Immediately clean and enforce the format
+        clean_output, issues = self.format_enforcer.enforce_format(raw_output)
+        
+        if issues:
+            log.warning(f"FormatEnforcer found issues (pass 1): {issues}")
+        
+        return clean_output
+
+    @robust_llm_call(max_retries=2)
+    def _llm_self_critique_pass(self, original_context, refactored_text):
+        """
+        Performs a self-critique pass and immediately enforces format compliance on the result.
+        """
+        prompt = PROMPTS['self_critique_and_refine'].format(
+            node_path=original_context['node_path'],
+            refactored_text=refactored_text
         )
         
-        # Build context with semantic awareness
-        context_parts = []
-        if smart_context:
-            context_parts.append(f"SEMANTIC CONTEXT:\n{smart_context}")
-        if self.document_context:
-            context_parts.append(f"DOCUMENT CONTEXT:\n{self.document_context}")
-        if section_name in self.section_contexts:
-            # Check coherence with previous section content
-            coherence_score = self.semantic_validator.validate_content_coherence(
-                content, self.section_contexts[section_name]
-            )
-            self.quality_metrics['coherence_scores'].append(coherence_score)
-            context_parts.append(f"SECTION CONTEXT (coherence: {coherence_score:.2f}):\n{self.section_contexts[section_name]}")
+        messages = [{"role": "user", "content": prompt}]
         
-        context = "\n\n".join(context_parts)
+        raw_response = self.llm_client.call_llm(messages)
         
-        # Build enhanced prompt with semantic requirements
-        full_prompt = f"{context}\n\nTASK: {prompt}\n\nSEMANTIC REQUIREMENTS:\n- Maintain semantic consistency with existing content\n- Ensure logical flow and coherence\n- Preserve technical accuracy and detail\n- Use appropriate academic/technical tone\n\nIMPORTANT: Output ONLY section content, no document structure. Preserve all LaTeX environments exactly.\n\nCONTENT:\n{content}"
+        match = re.search(r"Final Polished Version:\s*(.*)", raw_response, re.DOTALL | re.IGNORECASE)
         
-        system_prompt = self.format_enforcer.get_system_prompt()
-        
-        # Get LLM response
-        raw_result = self.llm_client.call_llm(full_prompt, system_prompt)
-        
-        # Enforce format
-        result, format_issues = self.format_enforcer.enforce_format(raw_result)
-        
-        # Post-processing semantic validation
-        is_valid_output, output_quality = self.semantic_validator.validate_content_quality(result)
-        self.quality_metrics['quality_scores'].append(output_quality)
-        
-        if not is_valid_output:
-            print(f"Warning: Output for {section_name} has low quality (score: {output_quality:.2f})")
-            self.quality_metrics['validation_failures'] += 1
+        if match:
+            # 3. INTEGRATION POINT
+            raw_final_version = match.group(1).strip()
+            
+            # Immediately clean and enforce the format on the final version
+            clean_final_version, issues = self.format_enforcer.enforce_format(raw_final_version)
+            
+            if issues:
+                log.warning(f"FormatEnforcer found issues (pass 2): {issues}")
+            
+            return clean_final_version
         else:
-            print(f"Processed {section_name} with quality score: {output_quality:.2f}")
-        
-        # Validate coherence with input if both are valid
-        if is_valid_input and is_valid_output:
-            coherence = self.semantic_validator.validate_content_coherence(content, result)
-            if coherence < 0.3:
-                print(f"Warning: Low coherence between input and output for {section_name} (score: {coherence:.2f})")
-        
-        # Log format issues if any
-        if format_issues:
-            print(f"Format issues in {section_name}: {format_issues}")
-        
-        # Update contexts with semantic awareness
-        self.update_context(section_name, result)
-        
-        return result
-    
-    def update_context(self, section_name, new_content):
-        """Update document and section contexts with semantic awareness"""
-        # Validate new content before updating context
-        is_valid, quality_score = self.semantic_validator.validate_content_quality(new_content)
-        
-        if not is_valid:
-            print(f"Warning: Not updating context with low-quality content from {section_name}")
-            return
-        
-        # Create semantic summary using context manager
-        summary = self.context_manager.create_section_summary(section_name, new_content)
-        
-        # Update section context with validated content
-        self.section_contexts[section_name] = summary
-        
-        # Smart context management with semantic relevance
-        if len(self.document_context) > 2000:
-            # Use context manager to prioritize most relevant content
-            all_sections = list(self.section_contexts.keys())
-            relevant_context = self.context_manager.build_context(
-                [section_name], 
-                list(self.section_contexts.values())
-            )
-            self.document_context = relevant_context[:1000]
-        else:
-            self.document_context += f"\n{section_name}: {summary[:150]}"
-        
-        # Special handling for Summary section - use full document context
-        if section_name == "Summary":
-            self.document_context = f"FULL DOCUMENT SUMMARY: {summary[:800]}"
-    
-    def get_quality_report(self):
-        """Get processing quality metrics report"""
-        if not self.quality_metrics['sections_processed']:
-            return "No sections processed yet."
-        
-        avg_quality = sum(self.quality_metrics['quality_scores']) / len(self.quality_metrics['quality_scores']) if self.quality_metrics['quality_scores'] else 0
-        avg_coherence = sum(self.quality_metrics['coherence_scores']) / len(self.quality_metrics['coherence_scores']) if self.quality_metrics['coherence_scores'] else 0
-        failure_rate = self.quality_metrics['validation_failures'] / self.quality_metrics['sections_processed']
-        
-        return f"""Quality Report:
-- Sections processed: {self.quality_metrics['sections_processed']}
-- Average quality score: {avg_quality:.2f}
-- Average coherence score: {avg_coherence:.2f}
-- Validation failure rate: {failure_rate:.1%}
-- Total validation failures: {self.quality_metrics['validation_failures']}"""
+            # If parsing fails, fall back to the already cleaned first version.
+            return refactored_text

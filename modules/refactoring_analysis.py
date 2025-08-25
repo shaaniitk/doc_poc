@@ -9,11 +9,16 @@ import sys
 import re
 import json
 from datetime import datetime
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+log = logging.getLogger(__name__)
 
 def analyze_refactoring():
     """Analyze refactoring results and save to log file"""
     
-    print("REFACTORING ANALYSIS STARTING...")
+    log.info("REFACTORING ANALYSIS STARTING...")
     
     # Files to analyze (using available files in export)
     original_file = "bitcoin_whitepaper.tex"  # Using as example unstructured input
@@ -27,7 +32,7 @@ def analyze_refactoring():
                 refactored_files.append(os.path.join("latest_run_output", file))
     
     if not refactored_files:
-        print("[WARNING] No refactored output found, using augmented output as example")
+        log.warning("No refactored output found, using augmented output as example")
         output_file = "export/augmented_output.tex"
     else:
         output_file = refactored_files[0]
@@ -43,11 +48,11 @@ def analyze_refactoring():
     
     # Check if files exist
     if not os.path.exists(original_file):
-        print(f"[ERROR] Original file not found: {original_file}")
+        log.error(f"Original file not found: {original_file}")
         return
         
     if not os.path.exists(output_file):
-        print(f"[ERROR] Output file not found: {output_file}")
+        log.error(f"Output file not found: {output_file}")
         return
     
     # Read files
@@ -57,7 +62,7 @@ def analyze_refactoring():
     with open(output_file, 'r', encoding='utf-8') as f:
         output_content = f.read()
     
-    print("[OK] Files loaded successfully")
+    log.info("Files loaded successfully")
     
     # Analyze documents
     original_stats = analyze_document_structure(original_content, "Original")
@@ -94,7 +99,7 @@ def analyze_refactoring():
     with open(log_filename, 'w', encoding='utf-8') as f:
         json.dump(results, f, indent=2, ensure_ascii=False)
     
-    print(f"Analysis saved to: {log_filename}")
+    log.info(f"Analysis saved to: {log_filename}")
     
     return results
 
@@ -122,12 +127,12 @@ def analyze_document_structure(content, doc_type):
         "has_bibliography": bool(re.search(r'\\begin\{thebibliography\}', content))
     }
     
-    print(f"{doc_type} Document Structure:")
-    print(f"  Characters: {stats['total_characters']:,}")
-    print(f"  Sections: {stats['sections']}")
-    print(f"  Subsections: {stats['subsections']}")
-    print(f"  Equations: {stats['equations']}")
-    print(f"  Academic Elements: Title={stats['has_title']}, Author={stats['has_author']}, Abstract={stats['has_abstract']}")
+    log.info(f"{doc_type} Document Structure:")
+    log.info(f"  Characters: {stats['total_characters']:,}")
+    log.info(f"  Sections: {stats['sections']}")
+    log.info(f"  Subsections: {stats['subsections']}")
+    log.info(f"  Equations: {stats['equations']}")
+    log.info(f"  Academic Elements: Title={stats['has_title']}, Author={stats['has_author']}, Abstract={stats['has_abstract']}")
     
     return stats
 
@@ -393,42 +398,42 @@ def calculate_refactoring_quality_score(results):
 def print_refactoring_summary(results):
     """Print a summary of the refactoring analysis results"""
     
-    print("\n" + "="*60)
-    print("REFACTORING ANALYSIS SUMMARY")
-    print("="*60)
+    log.info("\n" + "="*60)
+    log.info("REFACTORING ANALYSIS SUMMARY")
+    log.info("="*60)
     
     metrics = results["refactoring_metrics"]
     structure = results["structure_analysis"]
     formatting = results["formatting_analysis"]
     quality = results["overall_quality_score"]
     
-    print(f"Overall Quality Score: {quality}/100")
-    print()
+    log.info(f"Overall Quality Score: {quality}/100")
+    log.info("")
     
-    print("Key Improvements:")
-    print(f"  Structure Improvement: {metrics['structure_improvement_score']:.1f}/100")
-    print(f"  Academic Formatting: {formatting['academic_formatting_score']:.1f}/100")
-    print(f"  Organization: {metrics['organization_improvement_score']:.1f}/100")
-    print(f"  Content Preservation: {metrics['content_preservation_percent']:.1f}%")
-    print()
+    log.info("Key Improvements:")
+    log.info(f"  Structure Improvement: {metrics['structure_improvement_score']:.1f}/100")
+    log.info(f"  Academic Formatting: {formatting['academic_formatting_score']:.1f}/100")
+    log.info(f"  Organization: {metrics['organization_improvement_score']:.1f}/100")
+    log.info(f"  Content Preservation: {metrics['content_preservation_percent']:.1f}%")
+    log.info("")
     
-    print("Document Transformation:")
+    log.info("Document Transformation:")
     original = results["original_stats"]
     output = results["output_stats"]
-    print(f"  Sections: {original['sections']} -> {output['sections']} ({structure['sections_added']:+d})")
-    print(f"  Academic Elements Added:")
-    if output['has_title'] and not original['has_title']: print("    [+] Title")
-    if output['has_author'] and not original['has_author']: print("    [+] Author")
-    if output['has_abstract'] and not original['has_abstract']: print("    [+] Abstract")
-    if output['has_bibliography'] and not original['has_bibliography']: print("    [+] Bibliography")
-    print()
+    log.info(f"  Sections: {original['sections']} -> {output['sections']} ({structure['sections_added']:+d})")
+    log.info(f"  Academic Elements Added:")
+    if output['has_title'] and not original['has_title']: log.info("    [+] Title")
+    if output['has_author'] and not original['has_author']: log.info("    [+] Author")
+    if output['has_abstract'] and not original['has_abstract']: log.info("    [+] Abstract")
+    if output['has_bibliography'] and not original['has_bibliography']: log.info("    [+] Bibliography")
+    log.info("")
     
-    print("Formatting Improvements:")
-    print(f"  LaTeX Structure: {'[OK]' if formatting['has_documentclass'] else '[ERROR]'}")
-    print(f"  Proper Sectioning: {'[OK]' if formatting['proper_sectioning'] else '[ERROR]'}")
-    print(f"  Math Formatting: {'[OK]' if formatting['proper_math_formatting'] else '[ERROR]'}")
+    log.info("Formatting Improvements:")
+    log.info(f"  LaTeX Structure: {'[OK]' if formatting['has_documentclass'] else '[ERROR]'}")
+    log.info(f"  Proper Sectioning: {'[OK]' if formatting['proper_sectioning'] else '[ERROR]'}")
+    log.info(f"  Math Formatting: {'[OK]' if formatting['proper_math_formatting'] else '[ERROR]'}")
     
-    print("\n" + "="*60)
+    log.info("\n" + "="*60)
 
 if __name__ == "__main__":
     analyze_refactoring()

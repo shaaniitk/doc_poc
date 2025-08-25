@@ -9,11 +9,16 @@ import sys
 import re
 import json
 from datetime import datetime
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+log = logging.getLogger(__name__)
 
 def analyze_augmentation():
     """Analyze augmentation results and save to log file"""
     
-    print("AUGMENTATION ANALYSIS STARTING...")
+    log.info("AUGMENTATION ANALYSIS STARTING...")
     
     # Files to analyze
     original_file = "bitcoin_whitepaper.tex"
@@ -32,15 +37,15 @@ def analyze_augmentation():
     
     # Check if files exist
     if not os.path.exists(original_file):
-        print(f"[ERROR] Original file not found: {original_file}")
+        log.error(f"Original file not found: {original_file}")
         return
     
     if not os.path.exists(augmentation_file):
-        print(f"[ERROR] Augmentation file not found: {augmentation_file}")
+        log.error(f"Augmentation file not found: {augmentation_file}")
         return
         
     if not os.path.exists(output_file):
-        print(f"[ERROR] Output file not found: {output_file}")
+        log.error(f"Output file not found: {output_file}")
         return
     
     # Read files
@@ -53,7 +58,7 @@ def analyze_augmentation():
     with open(output_file, 'r', encoding='utf-8') as f:
         output_content = f.read()
     
-    print("[OK] Files loaded successfully")
+    log.info("Files loaded successfully")
     
     # Analyze original document
     original_stats = analyze_document_content(original_content, "Original")
@@ -92,7 +97,7 @@ def analyze_augmentation():
     with open(log_filename, 'w', encoding='utf-8') as f:
         json.dump(results, f, indent=2, ensure_ascii=False)
     
-    print(f"Analysis saved to: {log_filename}")
+    log.info(f"Analysis saved to: {log_filename}")
     
     return results
 
@@ -114,13 +119,13 @@ def analyze_document_content(content, doc_type):
         "references": len(re.findall(r'\\ref\{[^}]+\}', content))
     }
     
-    print(f"{doc_type} Document Analysis:")
-    print(f"  Characters: {stats['total_characters']:,}")
-    print(f"  Sections: {stats['sections']}")
-    print(f"  Equations: {stats['equations']}")
-    print(f"  Figures: {stats['figures']}")
-    print(f"  Tables: {stats['tables']}")
-    
+    log.info(f"{doc_type} Document Analysis:")
+    log.info(f"  Characters: {stats['total_characters']:,}")
+    log.info(f"  Sections: {stats['sections']}")
+    log.info(f"  Equations: {stats['equations']}")
+    log.info(f"  Figures: {stats['figures']}")
+    log.info(f"  Tables: {stats['tables']}")
+        
     return stats
 
 def calculate_augmentation_metrics(original_stats, augmentation_stats, output_stats):
@@ -292,38 +297,38 @@ def calculate_quality_score(results):
 def print_analysis_summary(results):
     """Print a summary of the analysis results"""
     
-    print("\n" + "="*60)
-    print("AUGMENTATION ANALYSIS SUMMARY")
-    print("="*60)
+    log.info("\n" + "="*60)
+    log.info("AUGMENTATION ANALYSIS SUMMARY")
+    log.info("="*60)
     
     metrics = results["augmentation_metrics"]
     structure = results["structure_analysis"]
     integration = results["integration_analysis"]
     quality = results["overall_quality_score"]
     
-    print(f"Overall Quality Score: {quality}/100")
-    print()
+    log.info(f"Overall Quality Score: {quality}/100")
+    log.info("")
     
-    print("Key Metrics:")
-    print(f"  Structure Preservation: {structure['preservation_rate_percent']:.1f}%")
-    print(f"  Content Enhancement: {metrics['content_enhancement_percent']:.1f}%")
-    print(f"  Technical Elements: {metrics['equation_preservation_percent']:.1f}%")
-    print(f"  Content Integration: {integration['integration_rate_percent']:.1f}%")
-    print()
+    log.info("Key Metrics:")
+    log.info(f"  Structure Preservation: {structure['preservation_rate_percent']:.1f}%")
+    log.info(f"  Content Enhancement: {metrics['content_enhancement_percent']:.1f}%")
+    log.info(f"  Technical Elements: {metrics['equation_preservation_percent']:.1f}%")
+    log.info(f"  Content Integration: {integration['integration_rate_percent']:.1f}%")
+    log.info("")
     
-    print("Document Statistics:")
+    log.info("Document Statistics:")
     original = results["original_stats"]
     output = results["output_stats"]
-    print(f"  Original: {original['total_characters']:,} chars, {original['sections']} sections")
-    print(f"  Output: {output['total_characters']:,} chars, {output['sections']} sections")
-    print(f"  Size Change: {metrics['content_enhancement_percent']:+.1f}%")
-    print()
+    log.info(f"  Original: {original['total_characters']:,} chars, {original['sections']} sections")
+    log.info(f"  Output: {output['total_characters']:,} chars, {output['sections']} sections")
+    log.info(f"  Size Change: {metrics['content_enhancement_percent']:+.1f}%")
+    log.info("")
     
-    print("New Sections Added:")
+    log.info("New Sections Added:")
     for section in structure["new_sections"]:
-        print(f"  - {section}")
+        log.info(f"  - {section}")
     
-    print("\n" + "="*60)
+    log.info("\n" + "="*60)
 
 if __name__ == "__main__":
     analyze_augmentation()

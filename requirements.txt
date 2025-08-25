@@ -1,7 +1,13 @@
-plasTeX>=3.1
-sentence-transformers>=2.2.2
-transformers>=4.30.0
-python-dotenv>=1.0.0
-torch>=2.0.0
-google-generativeai>=0.4.0
-google-cloud-aiplatform>=1.38.0
+# requirements.txt
+
+# Core Engine
+pylatexenc
+sentence-transformers
+torch
+scikit-learn
+numpy
+
+# LLM & Utilities
+google-generativeai
+requests
+python-dotenv

@@ -1,69 +1,63 @@
-"""Track how chunks contribute to different sections"""
-import json
+"""
+Track how chunks contribute to different sections in the hierarchical tree.
+"""
 
 class ContributionTracker:
     def __init__(self):
         self.chunk_contributions = {}
         self.section_sources = {}
+        self.chunk_id_counter = 0
+
+    def track_chunk_assignment(self, chunk, target_section_path):
+        """
+        Track which chunk goes to which target section in the tree.
+
+        Args:
+            chunk (dict): The chunk dictionary from the AST chunker.
+            target_section_path (list): The hierarchical path of the target section.
+        """
+        chunk_id = self.chunk_id_counter
+        self.chunk_id_counter += 1
+
+        # Convert paths to readable strings
+        original_path_str = " -> ".join(chunk['metadata'].get('hierarchy_path', ['Unknown']))
+        target_path_str = " -> ".join(target_section_path)
         
-    def track_chunk_assignment(self, chunk_id, original_section, target_section, chunk_content_preview):
-        """Track which chunk goes to which section"""
-        if chunk_id not in self.chunk_contributions:
-            self.chunk_contributions[chunk_id] = {
-                'original_section': original_section,
-                'target_sections': [],
-                'content_preview': chunk_content_preview[:100] + "..." if len(chunk_content_preview) > 100 else chunk_content_preview
-            }
-        
-        if target_section not in self.chunk_contributions[chunk_id]['target_sections']:
-            self.chunk_contributions[chunk_id]['target_sections'].append(target_section)
-        
-        # Track reverse mapping
-        if target_section not in self.section_sources:
-            self.section_sources[target_section] = []
-        
-        self.section_sources[target_section].append({
-            'chunk_id': chunk_id,
-            'original_section': original_section,
-            'content_preview': chunk_content_preview[:100] + "..."
-        })
-    
-    def generate_contribution_report(self):
-        """Generate detailed contribution report"""
-        report = {
-            'chunk_to_sections': self.chunk_contributions,
-            'section_to_chunks': self.section_sources,
-            'summary': {
-                'total_chunks': len(self.chunk_contributions),
-                'total_sections': len(self.section_sources),
-                'multi_section_chunks': len([c for c in self.chunk_contributions.values() if len(c['target_sections']) > 1])
-            }
+        content_preview = chunk['content'][:100].replace('\n', ' ') + "..."
+
+        self.chunk_contributions[chunk_id] = {
+            'original_path': original_path_str,
+            'target_path': target_path_str,
+            'content_preview': content_preview
         }
-        return report
-    
-    def save_contribution_report(self, output_path):
-        """Save contribution report to file"""
-        report = self.generate_contribution_report()
+
+        if target_path_str not in self.section_sources:
+            self.section_sources[target_path_str] = []
         
+        self.section_sources[target_path_str].append({
+            'chunk_id': chunk_id,
+            'original_path': original_path_str
+        })
+
+    def save_report(self, output_path):
+        """Saves a comprehensive contribution report in Markdown format."""
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write("# Chunk Contribution Analysis\n\n")
-            
-            f.write(f"## Summary\n")
-            f.write(f"- Total chunks processed: {report['summary']['total_chunks']}\n")
-            f.write(f"- Total sections created: {report['summary']['total_sections']}\n")
-            f.write(f"- Chunks used in multiple sections: {report['summary']['multi_section_chunks']}\n\n")
+            f.write("This report shows how chunks from the original document(s) were mapped to the final document structure.\n\n")
             
             f.write("## Section Sources\n")
-            for section, sources in report['section_to_chunks'].items():
-                f.write(f"\n### {section}\n")
-                f.write(f"Sources: {len(sources)} chunks\n")
+            f.write("Shows which original chunks were used to build each final section.\n\n")
+            for section, sources in sorted(self.section_sources.items()):
+                f.write(f"### Final Section: `{section}`\n")
+                f.write(f"- **Source Chunks:** {len(sources)}\n")
                 for source in sources:
-                    f.write(f"- Chunk {source['chunk_id']} (from {source['original_section']}): {source['content_preview']}\n")
+                    f.write(f"  - Chunk `{source['chunk_id']}` (from *{source['original_path']}*)\n")
             
             f.write("\n## Chunk Distribution\n")
-            for chunk_id, info in report['chunk_to_sections'].items():
-                f.write(f"\n**Chunk {chunk_id}** (from {info['original_section']}):\n")
-                f.write(f"- Content: {info['content_preview']}\n")
-                f.write(f"- Used in sections: {', '.join(info['target_sections'])}\n")
+            f.write("Shows where each original chunk ended up in the final structure.\n\n")
+            for chunk_id, info in sorted(self.chunk_contributions.items()):
+                f.write(f"### Chunk `{chunk_id}` (from *{info['original_path']}*)\n")
+                f.write(f"- **Content Preview:** `{info['content_preview']}`\n")
+                f.write(f"- **Mapped To:** `{info['target_path']}`\n")
         
         return output_path

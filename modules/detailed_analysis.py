@@ -4,12 +4,16 @@ Detailed Analysis of Document Combination Results
 
 import os
 import re
+import logging
+
+# Setup logging
+log = logging.getLogger(__name__)
 
 def analyze_combination_results():
     """Analyze the combination results in detail"""
     
-    print("DETAILED DOCUMENT COMBINATION ANALYSIS")
-    print("=" * 60)
+    log.info("DETAILED DOCUMENT COMBINATION ANALYSIS")
+    log.info("=" * 60)
     
     # Original files analysis
     original_files = {
@@ -20,7 +24,7 @@ def analyze_combination_results():
     total_original_size = 0
     total_original_chars = 0
     
-    print("ORIGINAL FILES ANALYSIS:")
+    log.info("ORIGINAL FILES ANALYSIS:")
     for file in original_files.keys():
         if os.path.exists(file):
             size = os.path.getsize(file)
@@ -48,19 +52,19 @@ def analyze_combination_results():
             total_original_size += size
             total_original_chars += chars
             
-            print(f"  {file}:")
-            print(f"    Size: {size:,} bytes")
-            print(f"    Characters: {chars:,}")
-            print(f"    Lines: {lines:,}")
-            print(f"    Words: {words:,}")
-            print(f"    Equations: {equations}")
-            print(f"    Code blocks: {code_blocks}")
-            print(f"    Lists: {enumerates}")
-            print()
+            log.info(f"  {file}:")
+            log.info(f"    Size: {size:,} bytes")
+            log.info(f"    Characters: {chars:,}")
+            log.info(f"    Lines: {lines:,}")
+            log.info(f"    Words: {words:,}")
+            log.info(f"    Equations: {equations}")
+            log.info(f"    Code blocks: {code_blocks}")
+            log.info(f"    Lists: {enumerates}")
+            log.info("")
     
-    print(f"COMBINED ORIGINAL TOTALS:")
-    print(f"  Total Size: {total_original_size:,} bytes")
-    print(f"  Total Characters: {total_original_chars:,}")
+    log.info(f"COMBINED ORIGINAL TOTALS:")
+    log.info(f"  Total Size: {total_original_size:,} bytes")
+    log.info(f"  Total Characters: {total_original_chars:,}")
     
     # Analyze combined output - check multiple possible locations (text files only)
     possible_combined_files = [
@@ -78,7 +82,7 @@ def analyze_combination_results():
             break
     
     if combined_file and os.path.exists(combined_file):
-        print(f"\nCOMBINED OUTPUT ANALYSIS ({combined_file}):")
+        log.info(f"COMBINED OUTPUT ANALYSIS ({combined_file}):")
         
         size = os.path.getsize(combined_file)
         with open(combined_file, 'r', encoding='utf-8') as f:
@@ -95,35 +99,35 @@ def analyze_combination_results():
             # Count sections
             sections = len(re.findall(r'\\section\{.*?\}', content))
             
-        print(f"  Size: {size:,} bytes")
-        print(f"  Characters: {chars:,}")
-        print(f"  Lines: {lines:,}")
-        print(f"  Words: {words:,}")
-        print(f"  Equations: {equations}")
-        print(f"  Code blocks: {code_blocks}")
-        print(f"  Lists: {enumerates}")
-        print(f"  Sections: {sections}")
+        log.info(f"  Size: {size:,} bytes")
+        log.info(f"  Characters: {chars:,}")
+        log.info(f"  Lines: {lines:,}")
+        log.info(f"  Words: {words:,}")
+        log.info(f"  Equations: {equations}")
+        log.info(f"  Code blocks: {code_blocks}")
+        log.info(f"  Lists: {enumerates}")
+        log.info(f"  Sections: {sections}")
         
         # Calculate preservation metrics
-        print(f"\nPRESERVATION ANALYSIS:")
+        log.info(f"PRESERVATION ANALYSIS:")
         
         size_change = ((size - total_original_size) / total_original_size) * 100
         char_change = ((chars - total_original_chars) / total_original_chars) * 100
         
-        print(f"  Size change: {size_change:+.1f}%")
-        print(f"  Character change: {char_change:+.1f}%")
+        log.info(f"  Size change: {size_change:+.1f}%")
+        log.info(f"  Character change: {char_change:+.1f}%")
         
         # Calculate total original LaTeX elements
         total_orig_equations = sum(f['equations'] for f in original_files.values())
         total_orig_code = sum(f['code_blocks'] for f in original_files.values())
         total_orig_lists = sum(f['enumerates'] for f in original_files.values())
         
-        print(f"  Equations: {total_orig_equations} -> {equations} ({((equations/total_orig_equations)*100 if total_orig_equations > 0 else 0):.1f}% preserved)")
-        print(f"  Code blocks: {total_orig_code} -> {code_blocks} ({((code_blocks/total_orig_code)*100 if total_orig_code > 0 else 0):.1f}% preserved)")
-        print(f"  Lists: {total_orig_lists} -> {enumerates} ({((enumerates/total_orig_lists)*100 if total_orig_lists > 0 else 0):.1f}% preserved)")
+        log.info(f"  Equations: {total_orig_equations} -> {equations} ({((equations/total_orig_equations)*100 if total_orig_equations > 0 else 0):.1f}% preserved)")
+        log.info(f"  Code blocks: {total_orig_code} -> {code_blocks} ({((code_blocks/total_orig_code)*100 if total_orig_code > 0 else 0):.1f}% preserved)")
+        log.info(f"  Lists: {total_orig_lists} -> {enumerates} ({((enumerates/total_orig_lists)*100 if total_orig_lists > 0 else 0):.1f}% preserved)")
         
         # Content quality analysis
-        print(f"\nCONTENT QUALITY ANALYSIS:")
+        log.info(f"CONTENT QUALITY ANALYSIS:")
         
         # Check for key Bitcoin content
         bitcoin_content = [
@@ -139,36 +143,36 @@ def analyze_combination_results():
         
         for content_name, pattern in bitcoin_content:
             matches = len(re.findall(pattern, content, re.IGNORECASE))
-            print(f"  {content_name}: {matches} mentions")
+            log.info(f"  {content_name}: {matches} mentions")
         
         # Check for structural issues
-        print(f"\nSTRUCTURAL ISSUES:")
+        log.info(f"STRUCTURAL ISSUES:")
         
         # Check for duplicate \end{document}
         end_docs = len(re.findall(r'\\end\{document\}', content))
         if end_docs > 1:
-            print(f"  [ERROR] Multiple \\end{{document}} found: {end_docs}")
+            log.error(f"  [ERROR] Multiple \\end{{document}} found: {end_docs}")
         else:
-            print(f"  [OK] Single \\end{{document}} found")
+            log.info(f"  [OK] Single \\end{{document}} found")
         
         # Check for orphaned LaTeX commands
         orphaned_commands = re.findall(r'^(equation|enumerate|verbatim)$', content, re.MULTILINE)
         if orphaned_commands:
-            print(f"  [WARNING] Orphaned LaTeX commands: {len(orphaned_commands)}")
+            log.info(f"  [WARNING] Orphaned LaTeX commands: {len(orphaned_commands)}")
         else:
-            print(f"  [OK] No orphaned LaTeX commands")
+            log.info(f"  [OK] No orphaned LaTeX commands")
         
         # Check for proper section structure
         if sections > 0:
-            print(f"  [OK] Document has proper section structure: {sections} sections")
+            log.info(f"  [OK] Document has proper section structure: {sections} sections")
         else:
-            print(f"  [ERROR] No proper sections found")
+            log.error(f"  [ERROR] No proper sections found")
     
     else:
-        print(f"\n[ERROR] No combined files found in any of the expected locations")
+        log.error(f"[ERROR] No combined files found in any of the expected locations")
     
     # Overall quality assessment
-    print(f"\nOVERALL QUALITY ASSESSMENT:")
+    log.info(f"OVERALL QUALITY ASSESSMENT:")
     
     if os.path.exists(combined_file):
         quality_score = 100
@@ -176,36 +180,36 @@ def analyze_combination_results():
         # Deduct points for size changes
         if abs(size_change) > 20:
             quality_score -= 20
-            print(f"  -20 points: Significant size change ({size_change:+.1f}%)")
+            log.info(f"  -20 points: Significant size change ({size_change:+.1f}%)")
         elif abs(size_change) > 10:
             quality_score -= 10
-            print(f"  -10 points: Moderate size change ({size_change:+.1f}%)")
+            log.info(f"  -10 points: Moderate size change ({size_change:+.1f}%)")
         
         # Deduct points for missing equations
         if total_orig_equations > 0 and equations < total_orig_equations:
             quality_score -= 15
-            print(f"  -15 points: Missing equations ({total_orig_equations - equations} lost)")
+            log.info(f"  -15 points: Missing equations ({total_orig_equations - equations} lost)")
         
         # Deduct points for missing code blocks
         if total_orig_code > 0 and code_blocks < total_orig_code:
             quality_score -= 15
-            print(f"  -15 points: Missing code blocks ({total_orig_code - code_blocks} lost)")
+            log.info(f"  -15 points: Missing code blocks ({total_orig_code - code_blocks} lost)")
         
         # Deduct points for structural issues
         if end_docs > 1:
             quality_score -= 10
-            print(f"  -10 points: Structural issues (multiple \\end{{document}})")
+            log.info(f"  -10 points: Structural issues (multiple \\end{{document}})")
         
-        print(f"\nFINAL QUALITY SCORE: {quality_score}/100")
+        log.info(f"FINAL QUALITY SCORE: {quality_score}/100")
         
         if quality_score >= 90:
-            print("  [EXCELLENT] High quality combination")
+            log.info("  [EXCELLENT] High quality combination")
         elif quality_score >= 75:
-            print("  [GOOD] Acceptable quality with minor issues")
+            log.info("  [GOOD] Acceptable quality with minor issues")
         elif quality_score >= 60:
-            print("  [FAIR] Usable but needs improvement")
+            log.info("  [FAIR] Usable but needs improvement")
         else:
-            print("  [POOR] Significant quality issues")
+            log.info("  [POOR] Significant quality issues")
 
 def main():
     """Main function for detailed analysis"""

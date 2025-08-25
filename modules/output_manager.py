@@ -1,6 +1,13 @@
-"""Output management and aggregation module"""
+"""
+Hierarchy-Aware Output Management and Document Aggregation.
+
+This module is responsible for saving all processing outputs. It can save the
+content of each individual node in a processed tree and can aggregate the
+final, processed document tree into a valid, well-formatted output file.
+"""
 import os
 from datetime import datetime
+# No changes to imports needed
 
 class OutputManager:
     def __init__(self, base_path="outputs"):
@@ -8,63 +15,63 @@ class OutputManager:
         self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.session_path = os.path.join(base_path, self.session_id)
         os.makedirs(self.session_path, exist_ok=True)
-        
-    def save_section_output(self, section_name, content):
-        """Save individual section output"""
-        safe_name = section_name.replace(" ", "_").replace(".", "")
-        file_path = os.path.join(self.session_path, f"{safe_name}.tex")
-        
-        with open(file_path, 'w', encoding='utf-8') as f:
-            f.write(content)
-        
-        return file_path
-    
-    def aggregate_document(self, processed_sections):
-        """Aggregate all sections into final document"""
-        latex_doc = []
-        
-        # Document header
-        latex_doc.extend([
-            "\\documentclass{article}",
-            "\\usepackage[pdftex]{graphicx}",
-            "\\usepackage{amsmath}",
-            "\\usepackage{pgfplots}",
-            "\\usetikzlibrary{shapes.geometric, arrows}",
-            "\\pgfplotsset{width=10cm, compat=1.18}",
-            "",
-            "\\begin{document}",
-            ""
-        ])
-        
-        # Add sections in order
-        section_order = [
-            "Summary", "Abstract", "1. Introduction", "2. Transactions", "3. Timestamp Server",
-            "4. Proof-of-Work", "5. Network", "6. Incentive", "7. Reclaiming Disk Space",
-            "8. Simplified Payment Verification", "9. Combining and Splitting Value",
-            "10. Privacy", "11. Major and Minor Assumptions", "12. Calculations", "13. Conclusion"
-        ]
-        
-        for section_name in section_order:
-            if section_name in processed_sections:
-                content = processed_sections[section_name]
-                if content.strip():
-                    latex_doc.append(f"% {section_name}")
-                    latex_doc.append(content)
-                    latex_doc.append("")
-        
-        latex_doc.append("\\end{document}")
-        
-        # Save final document
-        final_content = "\n".join(latex_doc)
-        final_path = os.path.join(self.session_path, "final_document.tex")
+        # Create a dedicated subfolder for the individual node outputs
+        self.nodes_path = os.path.join(self.session_path, "processed_nodes")
+        os.makedirs(self.nodes_path, exist_ok=True)
+
+    # --- NEW: HIERARCHICAL NODE SAVING ---
+    def save_processed_tree_nodes(self, processed_tree):
+        """
+        Saves the processed content of every node in the tree as a separate file.
+
+        This is a valuable feature for debugging and reviewing the output of
+        the LLM at each step of the document's hierarchy.
+
+        Args:
+            processed_tree (dict): The final, processed hierarchical document tree.
+        """
+        # Start the recursive saving process at the top level of the tree.
+        self._save_node_recursively(processed_tree, path_parts=[])
+
+    def _save_node_recursively(self, node_level, path_parts):
+        """
+        The core recursive engine for saving each node's content.
+        """
+        for title, node_data in node_level.items():
+            current_path = path_parts + [title]
+            
+            # If the node has processed content, save it.
+            content_to_save = node_data.get('processed_content')
+            if content_to_save:
+                # Create a descriptive filename from the hierarchical path.
+                # e.g., ['Section 1', 'Subsection 1.1'] -> "Section_1_Subsection_1.1.tex"
+                safe_title = title.replace(" ", "_").replace(".", "")
+                filename = "_".join([p.replace(" ", "_").replace(".", "") for p in path_parts] + [safe_title]) + ".tex"
+                file_path = os.path.join(self.nodes_path, filename)
+
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(content_to_save)
+
+            # Recurse into the subsections, passing down the updated path.
+            if node_data.get('subsections'):
+                self._save_node_recursively(node_data['subsections'], path_parts=current_path)
+
+    # --- AGGREGATION & LOGGING (No changes to the methods below) ---
+    def aggregate_document(self, final_document_string, output_format="latex"):
+        """
+        Saves the final, fully formatted document string to a file.
+        This method is now simpler: it just performs the file write operation.
+        """
+        format_config = OUTPUT_FORMATS.get(output_format, OUTPUT_FORMATS['latex'])
+        final_path = os.path.join(self.session_path, f"final_document{format_config['extension']}")
         
         with open(final_path, 'w', encoding='utf-8') as f:
-            f.write(final_content)
+            f.write(final_document_string)
         
         return final_path
-    
+
     def save_processing_log(self, log_entries):
-        """Save processing log"""
+        """Save a log of all processing steps for traceability."""
         log_path = os.path.join(self.session_path, "processing_log.txt")
         
         with open(log_path, 'w', encoding='utf-8') as f:
