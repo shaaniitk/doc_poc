@@ -1,36 +1,26 @@
 """
-Main Orchestrator for State-of-the-Art Document Refactoring & Augmentation.
 
-This script serves as the central controller for the entire document processing
-pipeline. It leverages a suite of advanced, hierarchy-aware modules to perform
-either a deep refactoring of a single document or a structural augmentation
-by combining two documents.
 
 The workflow is as follows:
-1.  Parse document(s) into a hierarchical Abstract Syntax Tree (AST).
-2.  Map the document structure to a standardized, hierarchical template.
-3.  IF two documents are provided, combine them using an advanced hierarchical
-    merging strategy (LLM-driven or robust fallback).
-4.  Process the resulting document tree node-by-node using the
-    HierarchicalProcessingAgent, which applies contextual, multi-pass LLM calls.
-5.  (Optional) Perform a global polishing pass on the entire tree to enhance
-    coherence and consistency.
-6.  Format the final, processed tree into the desired output format (e.g., LaTeX)
-    and save the results.
+1.  Parse document(s) into a hierarchical list of chunks with metadata.
+2.  Run the multi-pass IntelligentMapper to assign all chunks to a standardized,
+    hierarchical document tree, optionally using an LLM to remediate orphans.
+3.  IF two documents are provided, combine their trees using a hierarchical merging strategy.
+4.  Separate the unified tree into "main content" and "generative content" (e.g., Summary).
+5.  Process the main content tree using the HierarchicalProcessingAgent.
+6.  Process the generative content tree, using the processed main content as its context.
+7.  Recombine the trees and run an optional global polishing pass.
+8.  Format the final, processed tree into the desired output format and save all results.
 """
 import sys
 import os
+import argparse
 import logging
 
-
-# --- Configure Basic Logging ---
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-log = logging.getLogger(__name__) # <-- GET THE LOGGER INSTANCE
-
 # --- Import all state-of-the-art modules ---
-from modules.file_loader import load_latex_file
-from modules.chunker import extract_latex_sections, group_chunks_by_section
-from modules.section_mapper import assign_chunks_to_skeleton
+from modules.file_loader import load_file_content
+from modules.chunker import extract_document_sections
+from modules.intelligent_mapper import IntelligentMapper
 from modules.llm_client import UnifiedLLMClient
 from modules.llm_handler import HierarchicalProcessingAgent
 from modules.document_combiner import HierarchicalDocumentCombiner
@@ -38,72 +28,78 @@ from modules.robust_combiner import RobustHierarchicalCombiner
 from modules.intelligent_aggregation import DocumentPolisher
 from modules.output_formatter import HierarchicalOutputFormatter
 from modules.output_manager import OutputManager
-from config import DOCUMENT_TEMPLATES # Import for checking template existence
+from config import DOCUMENT_TEMPLATES
+
+# --- Configure Basic Logging ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+log = logging.getLogger(__name__)
 
 def main(source, source2=None, combine_strategy="smart", output_format="latex", 
-         template="bitcoin_paper_hierarchical", polishing=True, run_analysis=False, stage="all"):
-    
+         template="bitcoin_paper_hierarchical", polishing=True, run_analysis=False, 
+         stage="all", remediate_orphans=False):
+    """
+    Main function to orchestrate the entire document processing pipeline.
+    """
     log.info("--- Starting Document Processing Engine ---")
     log.info("Initializing core modules for session...")
     output_manager = OutputManager()
     log_entries = [f"Session started: {output_manager.session_id}"]
     
     try:
-        # --- Stage 1 & 2: Parsing and Mapping ---
-        # This part is common to both workflows.
-        def parse_and_map_document(file_path, template_name):
-            log.info(f"Parsing and mapping source file: {file_path}")
-            content = load_latex_file(file_path)
-            chunks = extract_latex_sections(content, source_path=file_path)
-            grouped_chunks = group_chunks_by_section(chunks)
-            mapped_tree = assign_chunks_to_skeleton(grouped_chunks, template_name)
-            return mapped_tree
-
+        # --- Template Validation ---
         if template not in DOCUMENT_TEMPLATES or not isinstance(DOCUMENT_TEMPLATES[template], dict):
-            # ... (template validation logic remains the same) ...
+            log.error(f"FATAL: The template '{template}' is not a valid hierarchical template (must be a dictionary).")
+            log.info("Please use a valid hierarchical template, for example: --template bitcoin_paper_hierarchical")
+            output_manager.save_processing_log(log_entries)
             return None
 
-        base_tree = parse_and_map_document(source, template)
-        
-        # This variable will hold the unified tree, regardless of the workflow.
-        tree_to_process = None
+        # --- Stage 1: Parsing & Chunking ---
+        log.info("--- STAGE 1: PARSING & CHUNKING ---")
+        log_entries.append("Entering Stage 1: Parsing & Chunking.")
+        content = load_file_content(source)
+        all_chunks_from_parser = extract_document_sections(content, source_path=source)
+        chunk_output_path = output_manager.save_json_output("1_chunk_output.json", all_chunks_from_parser)
+        log.info(f"-> Found {len(all_chunks_from_parser)} initial chunks.")
+        log.info(f"-> Chunking results saved to: {chunk_output_path}")
+        log_entries.append(f"Stage 1 completed. Found {len(all_chunks_from_parser)} chunks.")
+
+        if stage == "chunk":
+            log.info("--- Pipeline halted after 'chunk' stage as requested. ---")
+            return output_manager.session_path
+
+        # --- Stage 2: Intelligent Mapping ---
+        log.info("--- STAGE 2: INTELLIGENT MAPPING ---")
+        log_entries.append("Entering Stage 2: Intelligent Mapping.")
+        mapper = IntelligentMapper(template) # No flag in the constructor
+        mapped_tree = mapper.map_chunks(all_chunks_from_parser, use_llm_pass=remediate_orphans) # Flag goes here
+        map_output_path = output_manager.save_json_output("2_mapped_tree.json", mapped_tree)
+        log.info(f"-> Mapped tree structure saved to: {map_output_path}")
+        log_entries.append("Stage 2 completed.")
+
+        if stage == "map":
+            log.info("--- Pipeline halted after 'map' stage as requested. ---")
+            return output_manager.session_path
+            
+        tree_to_process = mapped_tree
 
         # --- Stage 3: (Conditional) Document Combination ---
         if source2:
-            # --- Two-Document Augmentation Workflow ---
-            log.info(f"--- Running in Two-Document Augmentation Mode (Strategy: {combine_strategy}) ---")
-            log_entries.append("Entering two-document augmentation workflow.")
+            log.info(f"--- STAGE 3: Combining Documents (Strategy: {combine_strategy}) ---")
+            aug_content = load_file_content(source2)
+            aug_chunks = extract_document_sections(aug_content, source_path=source2)
+            aug_mapped_tree = mapper.map_chunks(aug_chunks)
             
-            aug_tree = parse_and_map_document(source2, template)
-
             if combine_strategy == "smart":
                 combiner = HierarchicalDocumentCombiner()
-            else: # 'robust'
+            else:
                 combiner = RobustHierarchicalCombiner()
-            
-            # The result of the combination is our tree to process.
-            tree_to_process = combiner.combine_documents(base_tree, aug_tree)
-            log_entries.append(f"Successfully combined two document trees using '{combine_strategy}' strategy.")
-        else:
-            # --- Single-Document Refactoring Workflow ---
-            log.info("--- Running in Single-Document Refactoring Mode ---")
-            log_entries.append("Entering single-document refactoring workflow.")
-            # In this case, the mapped base tree is our tree to process.
-            tree_to_process = base_tree
-            
-        # --- Stage 4: Pre-Processing for Generative Content ---
-        # This logic is now IDENTICAL for both workflows.
-        # --- AFTER ---
-        # --- STAGE 4: Pre-Processing for Generative Content ---
-        log.info("Separating main content from generative content...")
-        
-        # First, safely pop the 'Orphaned_Content' list to handle it separately.
-        # This ensures the following loops only deal with structured dictionary nodes.
+            tree_to_process = combiner.combine_documents(tree_to_process, aug_mapped_tree)
+            log_entries.append("Document combination completed.")
+
+        # --- Stage 4: Generative Content Separation ---
+        log.info("--- STAGE 4: Separating Main and Generative Content ---")
         orphaned_chunks = tree_to_process.pop('Orphaned_Content', [])
-        
-        generative_nodes = {}
-        main_content_tree = {}
-        # This loop is now safe, as it will only iterate over actual document nodes.
+        generative_nodes, main_content_tree = {}, {}
         for title, node in tree_to_process.items():
             if node.get('generative'):
                 generative_nodes[title] = node
@@ -111,66 +107,56 @@ def main(source, source2=None, combine_strategy="smart", output_format="latex",
                 main_content_tree[title] = node
         log_entries.append(f"Identified {len(generative_nodes)} generative node(s).")
         
-        # --- Stage 5, Phase 1: Process Main Content ---
-        log.info("--- STAGE 5.1: Processing Main Document Content ---")
+        # --- Stage 5: Core LLM Processing ---
+        log.info("--- STAGE 5: Core Document Processing ---")
         llm_client = UnifiedLLMClient()
         agent = HierarchicalProcessingAgent(llm_client, output_format)
-        processed_main_tree = agent.process_tree(main_content_tree)
-        log_entries.append("Main content processing completed.")
-
-        # --- Stage 5, Phase 2: Create Generative Content ---
-        log.info("--- STAGE 5.2: Creating Generative Content (e.g., Summary) ---")
-        temp_formatter = HierarchicalOutputFormatter(output_format)
-        full_processed_content = temp_formatter.format_document(processed_main_tree)
-
-        processed_generative_nodes = {}
-        for title, node in generative_nodes.items():
-            processed_node = agent.process_single_node(title, node, full_processed_content)
-            processed_generative_nodes[title] = processed_node
-        log_entries.append("Generative content creation completed.")
         
-          # --- Stage 5, Phase 3: Recombine Tree ---
+        # Phase 1: Process main content
+        processed_main_tree = agent.process_tree(main_content_tree)
+        
+        # Phase 2: Process generative content
+        processed_generative_nodes = {}
+        if generative_nodes:
+            log.info("-> Creating generative content (Summary, etc.)...")
+            temp_formatter = HierarchicalOutputFormatter("latex")
+            full_processed_content = temp_formatter.format_document(processed_main_tree)
+            processed_generative_nodes = agent.process_tree(generative_nodes, generative_context=full_processed_content)
+        
+        # Recombine all parts
         final_tree = {**processed_generative_nodes, **processed_main_tree}
-        # Add the orphaned chunks back into the final tree for the formatter.
         if orphaned_chunks:
             final_tree['Orphaned_Content'] = orphaned_chunks
-        log.info("Recombined all content into final tree.")
 
         # --- Stage 6: (Optional) Polishing ---
         if polishing:
-            log.info("--- Applying Final Polishing Pass ---")
+            log.info("--- STAGE 6: Applying Final Polishing Pass ---")
             polisher = DocumentPolisher(llm_client)
             final_tree = polisher.polish_tree(final_tree)
-            log_entries.append("Document-wide polishing pass completed.")
-        
-        # --- Stage 7: Saving and Analysis ---
-        log.info("--- Saving All Processed Nodes Individually ---")
-        output_manager.save_processed_tree_nodes(final_tree)
-        log_entries.append(f"All processed nodes saved to: {output_manager.nodes_path}")
+            log_entries.append("Polishing pass completed.")
 
-        log.info("--- Formatting and Saving Final Document ---")
+        # --- Stage 7: Saving Outputs ---
+        log.info("--- STAGE 7: Saving All Outputs ---")
+        output_manager.save_processed_tree_nodes(final_tree)
         formatter = HierarchicalOutputFormatter(output_format)
         final_document_string = formatter.format_document(final_tree)
         final_path = output_manager.aggregate_document(final_document_string, output_format)
-        log_entries.append(f"Final document saved to: {final_path}")
-
         log.info("--- Document Processing Successful! ---")
-        log.info(f"  Final Document: {final_path}")
+        log.info(f"-> Final Document: {final_path}")
         
         return output_manager.session_path
 
     except Exception as e:
         log.error(f"FATAL ERROR: An unexpected error occurred: {str(e)}", exc_info=True)
         log_entries.append(f"FATAL ERROR: {str(e)}")
-        raise
+        return None
 
     finally:
         log_path = output_manager.save_processing_log(log_entries)
-        log.info(f"  Processing Log: {log_path}")
+        log.info(f"-> Processing Log: {log_path}")
 
 
 if __name__ == "__main__":
-    import argparse
     parser = argparse.ArgumentParser(description="State-of-the-Art Document Refactoring and Augmentation Engine.")
     parser.add_argument("--source", required=True, help="Path to the primary source .tex file.")
     parser.add_argument("--source2", help="Path to the second .tex file for augmentation.")
@@ -178,21 +164,20 @@ if __name__ == "__main__":
     parser.add_argument("--format", dest="output_format", default="latex", choices=["latex", "markdown"], help="The output format for the final document.")
     parser.add_argument("--template", default="bitcoin_paper_hierarchical", help="The hierarchical document template to use from config.py.")
     parser.add_argument("--no-polishing", dest="polishing", action="store_false", help="Disable the final, global polishing pass.")
-    parser.add_argument("--analysis", action="store_true", help="Run a full post-processing analysis after the main run completes.") # <-- ADD THIS LINE
-    parser.add_argument("--stage", default="all", choices=["chunk", "map", "all"],
-                        help="Run only a specific stage of the pipeline for debugging (chunk, map).") # <-- ADD THIS
-   
+    parser.add_argument("--stage", default="all", choices=["chunk", "map", "all"], help="Run only a specific stage of the pipeline for debugging.")
+    parser.add_argument("--remediate-orphans", action="store_true", help="Enable the LLM to dynamically create new sections for orphaned content.")
+    parser.add_argument("--analysis", action="store_true", help="Run a full post-processing analysis after the main run completes.")
+    
     args = parser.parse_args()
     
     session_path = main(source=args.source, source2=args.source2, combine_strategy=args.combine_strategy,
-                    output_format=args.output_format, template=args.template, 
-                    polishing=args.polishing, run_analysis=args.analysis) #<-- Pass args.analysis here
-
-# Conditionally run the analysis script
+                        output_format=args.output_format, template=args.template, 
+                        polishing=args.polishing, run_analysis=args.analysis, 
+                        stage=args.stage, remediate_orphans=args.remediate_orphans)
+    
     if args.analysis and session_path:
         log.info("--- Handing off to Post-Processing Analysis Suite ---")
         try:
-            # Ensure your run_analysis.py is in the modules folder
             from modules.run_analysis import main as run_analysis_main
             run_analysis_main(
                 session_path=session_path,

@@ -11,6 +11,7 @@ __pycache__/
 
 # Processed and augmented documents
 /outputs/
+output/
 
 # Intermediate and compiled LaTeX files
 *_preprocessed.tex

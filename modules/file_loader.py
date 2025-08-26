@@ -1,48 +1,29 @@
-"""📄 FILE LOADING MODULE - DOCUMENT INPUT GATEWAY
+"""
+Universal File Content Loader.
 
-This module handles all file I/O operations for the document processing system.
-It provides reliable, encoding-aware file loading with proper error handling.
-
-🎯 KEY FEATURES:
-- UTF-8 encoding support for international characters
-- Robust error handling with clear messages
-- LaTeX file specialization
-- Simple, focused interface
-
-🛡️ RELIABILITY:
-- File existence validation
-- Encoding error handling
-- Clear error messages for debugging
-
-This is the trusted entry point for all document content.
+This module is responsible for reading the content from various file formats,
+returning the most appropriate data structure for parsing by the chunker.
 """
 import os
+import docx # Requires pip install python-docx
 
-def load_latex_file(file_path):
-    """📄 LATEX FILE LOADER
-    
-    Loads LaTeX file content with proper error handling and encoding.
-    This is the entry point for all document processing workflows.
-    
-    Args:
-        file_path: Path to the LaTeX file
-        
-    Returns:
-        str: File content as UTF-8 string
-        
-    Raises:
-        FileNotFoundError: If file doesn't exist
-        
-    🛡️ ERROR HANDLING:
-    Provides clear error messages for missing files.
+def load_file_content(file_path):
     """
-    # 🔍 Check if file exists before attempting to read
+    Loads the content from a file, returning a string for text-based formats
+    and a Document object for .docx files.
+    """
     if not os.path.exists(file_path):
-        raise FileNotFoundError(f"File not found: {file_path}")
+        raise FileNotFoundError(f"Input file not found at path: {file_path}")
+
+    _, extension = os.path.splitext(file_path)
     
-    # 📄 Read file with UTF-8 encoding (handles international characters)
-    with open(file_path, 'r', encoding='utf-8') as f:
-        return f.read()
+    if extension in ['.txt', '.tex', '.md']:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return f.read()
+    elif extension == '.docx':
+        return docx.Document(file_path)
+    else:
+        raise ValueError(f"Unsupported file format: {extension}")
 
 def save_output(content, output_path):
     """💾 CONTENT OUTPUT SAVER

@@ -1,0 +1,269 @@
+\documentclass{article}
+                    \usepackage[utf8]{inputenc}
+                    \usepackage{amsmath}
+                    \usepackage{graphicx}
+                    \usepackage{hyperref}
+                    \title{Refactored Document}
+                    \author{Automated System}
+                    \date{\today}
+                    \begin{document}
+                    \maketitle
+\section{Summary}
+**Executive Summary**
+
+The proposed system introduces a **peer-to-peer electronic cash system** that enables direct online payments between parties without relying on financial institutions. The core challenge addressed is the prevention of **double-spending**, traditionally solved through a trusted central authority. In this system, **digital signatures** define electronic coins, with each owner transferring the coin by appending a signature. To ensure the integrity of transactions, a **distributed timestamp server** generates **proof-of-work** of the chronological order of transactions. This system is secure as long as honest nodes collectively possess more **CPU power** than any cooperating group of attacker nodes.
+
+The solution leverages a **proof-of-work** system to create an **immutable record** of transactions, forming a chain of **hash-based proof-of-work**. This chain not only proves the sequence of events but also demonstrates that it originated from the largest pool of **CPU power**. The network requires minimal structure, with messages broadcast on a best-effort basis. Nodes can freely leave and rejoin the network, accepting the **longest proof-of-work chain** as proof of events during their absence. This approach ensures that the earliest transaction is the valid one, rendering subsequent **double-spending** attempts irrelevant.
+
+The key benefits of this system include **trustless transactions**, low transaction costs, and robust fraud protection. By eliminating the need for trusted third parties, the system reduces the costs associated with dispute resolution and transaction fees. The **proof-of-work** mechanism ensures that altering past transactions becomes computationally infeasible, providing a secure and tamper-evident record of all transactions. This system offers a decentralized and secure alternative to traditional banking systems, enabling irreversible payments for irreversible services and enhancing privacy through the use of unique key pairs for each transaction.
+\section{Abstract}
+\paragraph{Building on this foundation of decentralized security and privacy, the following section introduces a peer-to-peer electronic cash system that further extends these principles.}
+
+*(Note: This transition assumes the "Summary" section is discussing blockchain or cryptographic principles, while the "Abstract" introduces Bitcoin's peer-to-peer model. Adjust phrasing if the context differs.)*
+
+A peer-to-peer electronic cash system is proposed, enabling direct online payments without financial institutions. This system defines electronic coins as sequences of digital signatures, with each owner transferring the coin by appending a signature. To prevent double-spending, a peer-to-peer distributed timestamp server generates computational proof of transaction chronological order, secure if honest nodes control the majority of CPU power.
+
+The system addresses the double-spending problem by validating the earliest transaction and using a proof-of-work mechanism to create an immutable record of transactions. This proof-of-work, based on Adam Back's Hashcash, requires finding a value whose hash begins with a specific number of zero bits. The longest chain of proof-of-work not only proves the sequence of events but also demonstrates that it originated from the largest pool of CPU power, ensuring the network's robustness and security.
+
+The network operates with minimal structure, with nodes freely joining and leaving, and messages broadcast on a best-effort basis. Nodes contribute to the network's consensus by allocating their CPU power to extend valid blocks and ignore invalid ones. The incentive structure rewards nodes for maintaining the longest chain and includes transaction fees to eliminate inflation once a predetermined number of coins are in circulation.
+
+To optimize disk space usage, the system discards spent transactions once they are sufficiently buried under subsequent blocks, using a Merkle Tree structure to compact old blocks. Simplified Payment Verification (SPV) allows users to verify payments without operating a full network node, maintaining a copy of the block headers and obtaining the Merkle branch linking the transaction to its timestamped block.
+
+The system addresses the challenges of the current financial infrastructure by proposing a new approach that eliminates the need for trusted intermediaries. Transactions are designed with multiple inputs and outputs to facilitate the combination and splitting of value. The security analysis examines the privacy model and attack vector calculations, ensuring the system's integrity and the value of the attacker's own wealth.
+
+The critical assumption underlying this system is that honest nodes control a majority of the CPU power, ensuring the honest chain will grow the fastest and surpass any competing chains. The proof-of-work difficulty is dynamically adjusted to adapt to increasing hardware speeds and varying node participation over time.
+
+\begin{equation}
+p = \text{probability an honest node finds the next block}
+\end{equation}
+
+\begin{equation}
+q = \text{probability the attacker finds the next block}
+\end{equation}
+
+\begin{equation}
+q_z = \text{probability the attacker will ever catch up from z blocks behind}
+\end{equation}
+
+\begin{verbatim}
+#include <math.h>
+double AttackerSuccessProbability(double q, int z)
+{
+    double p = 1.0 - q;
+    double lambda = z \textit{ (q / p);
+    double sum = 1.0;
+    int i, k;
+    for (k = 0; k <= z; k++)
+    {
+        double poisson = exp(-lambda);
+        for (i = 1; i <= k; i++)
+            poisson }= lambda / i;
+        sum -= poisson * (1 - pow(q / p, z - k));
+    }
+    return sum;
+}
+\end{verbatim}
+\section{1. Introduction}
+\section{2. Transactions}
+An electronic coin is formally defined as a sequence of digital signatures. In this construct, each successive owner transfers the coin to the next by appending a digital signature to the coin. This signature is generated from a hash of the preceding transaction and the public key of the intended recipient. Consequently, a payee can authenticate the coin's ownership history by verifying the integrity and validity of these signatures.
+\section{3. Timestamp Server}
+\paragraph{While digital signatures ensure the integrity of transactions, they alone cannot prevent double-spending without a mechanism to timestamp and broadcast transactions to all participants.}
+
+This transition maintains the flow by acknowledging the role of signatures (from the previous section) while introducing the need for a timestamp server (the next topic).
+
+To facilitate direct online payments between parties without relying on financial institutions, digital signatures offer a partial solution. However, the primary advantage is compromised if a trusted third party is still needed to prevent double-spending. We address this issue by introducing a peer-to-peer distributed timestamp server, which generates computational proof of the chronological order of transactions. This system is secure as long as honest nodes collectively possess more CPU power than any cooperating group of attacker nodes.
+
+The core challenge lies in verifying that a coin has not been double-spent by one of its owners. A conventional approach involves a trusted central authority, or mint, which checks each transaction for double-spending. In this system, coins must be returned to the mint after each transaction to issue new coins, and only those issued directly by the mint are trusted. However, this solution centralizes control and resembles traditional banking systems, as every transaction must go through the mint.
+
+In our proposed system, the earliest transaction is the valid one, rendering subsequent double-spending attempts irrelevant. To confirm the absence of a transaction, one must be aware of all transactions. Our peer-to-peer network timestamps transactions by hashing them into an ongoing chain of hash-based proof-of-work, creating an immutable record. The longest chain not only proves the sequence of events but also demonstrates that it originated from the largest pool of CPU power. As long as the majority of CPU power is controlled by non-cooperating nodes, they will generate the longest chain and outpace any attackers. The network requires minimal structure, with messages broadcast on a best-effort basis. Nodes can freely leave and rejoin the network, accepting the longest proof-of-work chain as proof of events during their absence.
+\section{4. Proof-of-Work}
+\paragraph{While the timestamp server relies on a decentralized network of nodes, the integrity of the system is further secured through a proof-of-work mechanism.}
+
+*(This transition smoothly connects the decentralized nature of the timestamp server to the introduction of proof-of-work as its security backbone.)*
+
+To establish a distributed timestamp server on a peer-to-peer network, we employ a proof-of-work system akin to Adam Back's Hashcash. This mechanism replaces the need for centralized entities like newspapers or Usenet posts. The proof-of-work requires finding a value such that its hash, generated using a cryptographic function like SHA-256, begins with a specific number of zero bits. The computational effort needed to achieve this is exponential to the number of zero bits required, and the validity of the work can be verified by a single hash computation.
+
+In our timestamp network, the proof-of-work is implemented by incrementing a nonce within a block until the block's hash meets the specified zero-bit criteria. Once the necessary computational effort is expended, altering the block becomes infeasible without redoing the work. As subsequent blocks are linked to it, modifying the block would necessitate redoing the work for all subsequent blocks, making tampering increasingly difficult.
+
+This proof-of-work system is integral to our proposed electronic transaction framework, which eliminates the need for trust. Building upon the foundation of digital signatures for ownership control, we address the double-spending problem through a peer-to-peer network. This network leverages proof-of-work to maintain a public transaction history that becomes computationally impractical for an attacker to alter, assuming honest nodes possess the majority of the network's CPU power.
+
+The network's robustness stems from its unstructured simplicity. Nodes operate concurrently with minimal coordination, and their identities are irrelevant since messages are broadcast rather than directed. Nodes can freely join or leave the network, using the proof-of-work chain to verify transactions that occurred during their absence. They contribute to the network's consensus by allocating their CPU power to extend valid blocks and ignore invalid ones. This consensus mechanism enforces necessary rules and incentives, ensuring the network's integrity and security.
+\section{5. Network}
+\paragraph{With the consensus mechanism in place, the next step is to establish the network infrastructure that enables participants to interact and contribute to the blockchain.}
+
+*(This transition smoothly shifts from the discussion of Proof-of-Work to the practical setup of the network, maintaining a logical flow.)*
+
+To initiate the network, follow these steps:
+
+1. \textbf{Node Initialization}: Each participant in the network must first initialize their node. This involves generating a unique cryptographic key pair, consisting of a public key and a private key. The public key serves as the node's identifier within the network.
+
+2. \textbf{Peer Discovery}: Once initialized, nodes must discover and connect to other nodes in the network. This can be achieved through a peer discovery mechanism, such as a DNS seed or a hardcoded list of initial peers.
+
+3. \textbf{Handshake Protocol}: Upon connecting to another node, a handshake protocol is initiated. This protocol involves the exchange of version messages, which include information about the node's software version, protocol version, and other relevant data.
+
+4. \textbf{Network Communication}: After the handshake, nodes can begin communicating with each other. This communication is facilitated through a series of messages, each serving a specific purpose, such as transmitting transactions or blocks of data.
+
+5. \textbf{Consensus Mechanism}: To maintain consistency across the network, a consensus mechanism is employed. This mechanism ensures that all nodes agree on the state of the network, including the validity of transactions and the order in which they are processed.
+
+6. \textbf{Transaction Propagation}: When a transaction is initiated, it is broadcast to all nodes in the network. Each node validates the transaction and, if valid, adds it to its pool of unconfirmed transactions.
+
+7. \textbf{Block Creation}: Nodes periodically create blocks of transactions. These blocks are then broadcast to the network for validation. The process of creating and validating blocks is a crucial part of the consensus mechanism.
+
+8. \textbf{Chain Maintenance}: Nodes continuously maintain a chain of blocks, known as the blockchain. This chain serves as a public ledger of all transactions that have occurred on the network. Nodes regularly synchronize their blockchains with other nodes to ensure consistency.
+
+9. \textbf{Security Measures}: To ensure the security of the network, various measures are implemented. These include cryptographic techniques for securing transactions and blocks, as well as mechanisms for detecting and preventing malicious activity.
+
+10. \textbf{Network Monitoring}: Nodes continuously monitor the network for any issues or anomalies. This includes monitoring the performance of other nodes, the health of the network, and the integrity of the blockchain.
+\section{6. Incentive}
+\paragraph{While these security measures ensure the network's integrity, the incentive mechanisms guide nodes to maintain and extend the blockchain reliably.}
+
+*(This transition smoothly shifts from the technical security aspects of the network to the economic incentives that drive node behavior.)*
+
+In the network, nodes consistently adhere to the longest chain as the valid one, dedicating their computational resources to extend it. In instances where two nodes simultaneously broadcast differing versions of the subsequent block, some nodes may receive one version before the other. In such cases, nodes will initially work on the first received version but retain the alternative branch in anticipation of it potentially becoming longer. The resolution occurs when the next proof-of-work is discovered, elongating one branch. Consequently, nodes previously working on the shorter branch will transition to the longer one.
+
+The broadcast of new transactions does not necessitate reaching every node. Provided they reach a significant number of nodes, transactions will eventually be incorporated into a block. Similarly, block broadcasts are resilient to message loss. If a node fails to receive a block, it will request the missing block upon receiving the subsequent block and identifying the omission.
+
+To incentivize network participation and facilitate initial coin distribution, the first transaction in each block awards the block's creator with newly minted coins. This mechanism is analogous to gold mining, where resources are expended to introduce new coins into circulation, with the expenditure in this context being CPU time and electricity.
+
+Additionally, transaction fees contribute to the incentive structure. When the output value of a transaction is less than its input value, the difference constitutes a transaction fee, augmenting the incentive value of the block containing the transaction. Once a predetermined number of coins are in circulation, the incentive can transition entirely to transaction fees, eliminating inflation.
+
+This incentive structure encourages nodes to remain honest. A malicious actor with superior computational power must choose between using it to defraud the system or to generate new coins. The rules are designed such that the latter is more profitable, thereby preserving the system's integrity and the value of the attacker's own wealth.
+
+\begin{equation}
+p = \text{probability an honest node finds the next block}
+\end{equation}
+\section{7. Reclaiming Disk Space}
+While the incentive structure ensures the network's security and economic stability, the system also optimizes resource efficiency through careful management of transaction data.
+
+\paragraph{While the incentive structure ensures the network's security and economic stability, the system also optimizes resource efficiency through careful management of transaction data.}
+
+To optimize disk space usage, the system employs a strategy of discarding spent transactions once they are sufficiently buried under subsequent blocks. This process is facilitated by organizing transactions into a Merkle Tree structure, where only the root hash is included in the block's hash. Consequently, old blocks can be compacted by pruning branches of the tree, as the interior hashes are not required for storage.
+
+The block header, which contains essential metadata, occupies approximately 80 bytes when devoid of transactions. Assuming a block generation interval of 10 minutes, the annual storage requirement for block headers is calculated as follows: \(80 \text{ bytes} \times 6 \times 24 \times 365 = 4.2 \text{MB per year}\). Given that computer systems in 2008 typically came equipped with 2GB of RAM and considering Moore's Law, which predicts an annual growth of 1.2GB in storage capacity, it is evident that maintaining block headers in memory poses no significant challenge to contemporary systems.
+\section{8. Simplified Payment Verification}
+While modern systems effortlessly handle the memory demands of block headers, the next challenge lies in ensuring the integrity and consensus of transactions within a trustless payment network.
+
+\paragraph{While modern systems effortlessly handle the memory demands of block headers, the next challenge lies in ensuring the integrity and consensus of transactions within a trustless payment network.}
+
+To establish a trustless electronic payment system, transactions must be publicly announced, and participants must agree on a single history of their receipt order. The payee requires proof that, at the time of each transaction, the majority of nodes acknowledged it as the first received.
+
+Simplified Payment Verification (SPV) enables users to verify payments without operating a full network node. This method involves maintaining a copy of the block headers of the longest proof-of-work chain, obtained by querying network nodes until the longest chain is identified. Additionally, users obtain the Merkle branch linking the transaction to its timestamped block. Although users cannot independently verify the transaction, they can confirm that a network node has accepted it, with subsequent blocks further validating the network's acceptance.
+
+The reliability of SPV depends on honest nodes controlling the network. However, it is vulnerable to attacks if the network is overpowered by a malicious entity. While network nodes can verify transactions independently, SPV can be deceived by fabricated transactions as long as the attacker maintains control over the network. To mitigate this risk, users can accept alerts from network nodes when invalid blocks are detected, prompting the download of the full block and alerted transactions to confirm inconsistencies. Businesses frequently receiving payments may prefer to run their own nodes for enhanced security and quicker verification.
+\section{9. Combining and Splitting Value}
+\paragraph{While businesses may opt for self-managed nodes to secure transactions, the broader financial ecosystem still depends on intermediaries to process payments at scale.}
+
+*(This transition maintains the technical context of the previous section while introducing the reliance on intermediaries, setting up the discussion in the next section.)*
+
+The current financial infrastructure for internet commerce relies heavily on financial institutions acting as trusted intermediaries to facilitate electronic payments. While this system functions adequately for most transactions, it is not without its flaws, primarily stemming from the trust-based model's inherent weaknesses. The irreversibility of transactions is compromised, as financial institutions are inevitably drawn into dispute resolution. This mediation incurs costs, which in turn elevates transaction fees, setting a minimum practical transaction size and precluding small, casual transactions. Furthermore, the inability to make irreversible payments for irreversible services is lost. The potential for reversal fosters a need for trust, leading merchants to request more customer information than necessary and accept a certain level of fraud as inevitable. While physical currency can circumvent these issues in person, no such mechanism exists for remote payments without a trusted third party.
+
+To address these challenges, a new approach is proposed, outlined in the following steps:
+
+\begin{enumerate}
+\item New transactions are broadcast to all nodes within the network.
+\item Each node compiles these new transactions into a block.
+\item Nodes then compete to find a challenging proof-of-work for their respective blocks.
+\item Upon finding a valid proof-of-work, a node broadcasts the block to all other nodes.
+\item Nodes accept the block only if all transactions within it are valid and have not been previously spent.
+\item Nodes signal their acceptance of the block by working on creating the next block in the chain, using the hash of the accepted block as the previous hash.
+\end{enumerate}
+
+To facilitate the combination and splitting of value, transactions are designed with multiple inputs and outputs. Typically, a transaction will have either a single input from a larger previous transaction or multiple inputs combining smaller amounts. The outputs usually consist of at most two: one for the payment itself and one returning any change to the sender. It is important to note that fan-out, where a transaction depends on several others, and those transactions depend on many more, does not pose a problem in this context. There is no need to extract a complete standalone copy of a transaction's history.
+\section{10. Security Analysis}
+\subsection{10.1 Privacy Model}
+In the traditional banking model, privacy is maintained by restricting information access to involved parties and a trusted intermediary. However, the requirement to publicly announce all transactions necessitates an alternative approach to preserve privacy. This is achieved by anonymizing public keys, ensuring that while transactions are visible, their association with specific individuals remains obscure. This level of disclosure is analogous to stock exchange operations, where trade timings and sizes are public, but party identities are not.
+
+To further enhance privacy, a unique key pair should be employed for each transaction, preventing linkage to a common owner. Nevertheless, multi-input transactions inevitably expose that their inputs are owned by the same entity, posing a risk. If the owner of a key is identified, it could lead to the disclosure of other transactions belonging to the same owner.
+\subsection{10.2 Attack Vector Calculations}
+\paragraph{While privacy risks arise from transaction linkage, another critical threat involves adversarial attempts to manipulate the blockchain's consensus mechanism.}
+
+This transition maintains a smooth flow by acknowledging the privacy concerns from the previous section while introducing the new topic of attack vectors in the next section.
+
+We examine the scenario wherein an adversary attempts to outpace the honest chain in block generation. Even if successful, this does not permit arbitrary alterations, such as value creation or unauthorized fund appropriation. Nodes reject invalid transactions, and honest nodes disregard blocks containing them. Thus, an attacker can only attempt to modify one of their own transactions to reverse recent expenditures.
+
+The competition between the honest chain and the attacker's chain can be modeled as a Binomial Random Walk. The success event is the honest chain's extension by one block, increasing its lead by +1, while the failure event is the attacker's chain extension, decreasing the gap by -1.
+
+The probability of an attacker catching up from a given deficit is analogous to the Gambler's Ruin problem. Consider a gambler with unlimited credit, starting at a deficit, and engaging in an infinite number of trials to reach breakeven. The probability of the gambler ever reaching breakeven, or the attacker catching up with the honest chain, can be calculated as follows:
+
+\begin{equation}
+q = \text{probability the attacker finds the next block}
+\end{equation}
+
+\begin{equation}
+q_z = \text{probability the attacker will ever catch up from z blocks behind}
+\end{equation}
+
+To determine the probability that the attacker could still catch up, we multiply the Poisson density for each possible progress increment by the probability of catching up from that point:
+
+\begin{verbatim}
+#include <math.h>
+double AttackerSuccessProbability(double q, int z)
+{
+    double p = 1.0 - q;
+    double lambda = z \textit{ (q / p);
+    double sum = 1.0;
+    int i, k;
+    for (k = 0; k <= z; k++)
+    {
+        double poisson = exp(-lambda);
+        for (i = 1; i <= k; i++)
+            poisson }= lambda / i;
+        sum -= poisson * (1 - pow(q / p, z - k));
+    }
+    return sum;
+}
+\end{verbatim}
+\section{11. Assumptions}
+\subsection{11.1 Major Assumptions}
+The proof-of-work mechanism also addresses the challenge of determining representation in majority decision-making processes. A system based on one-IP-address-one-vote could be manipulated by entities capable of allocating multiple IP addresses. In contrast, proof-of-work effectively equates to one-CPU-one-vote. The longest chain, which embodies the greatest proof-of-work effort, represents the majority decision.
+
+The critical assumption underlying this system is that honest nodes control a majority of the CPU power. Under this condition, the honest chain will grow the fastest and surpass any competing chains. To alter a past block, an attacker would need to redo the proof-of-work for that block and all subsequent blocks, then surpass the work of the honest nodes. The probability of a slower attacker catching up diminishes exponentially as more blocks are added.
+
+To adapt to increasing hardware speeds and varying node participation over time, the proof-of-work difficulty is dynamically adjusted. This adjustment is based on a moving average that targets a consistent number of blocks per hour. If blocks are generated too rapidly, the difficulty increases accordingly.
+\subsection{11.2 Minor Assumptions}
+\section{12. Conclusion}
+\section{13. References}
+\section{14. System Tests}
+
+\section*{Uncategorized Content}
+We need a way for the payee to know that the previous owners have not signed any earlier transactions.
+
+In the mint based model, the mint was aware of all transactions and decided which arrived first.
+
+\begin{equation}
+q_z = \begin{cases}
+1 & \text{if } p \leq q \\
+(q/p)^z & \text{if } p > q
+\end{cases}
+\end{equation}
+
+Given our assumption that $p > q$, the probability drops exponentially as the number of blocks the attacker has to catch up with increases. With the odds against him, if he doesn't make a lucky lunge forward early on, his chances become vanishingly small as he falls further behind.
+
+We now consider how long the recipient of a new transaction needs to wait before being sufficiently certain the sender can't change the transaction. We assume the sender is an attacker who wants to make the recipient believe he paid him for a while, then switch it to pay back to himself after some time has passed. The receiver will be alerted when that happens, but the sender hopes it will be too late.
+
+The receiver generates a new key pair and gives the public key to the sender shortly before signing. This prevents the sender from preparing a chain of blocks ahead of time by working on it continuously until he is lucky enough to get far enough ahead, then executing the transaction at that moment. Once the transaction is sent, the dishonest sender starts working in secret on a parallel chain containing an alternate version of his transaction.
+
+The recipient waits until the transaction has been added to a block and z blocks have been linked after it. He doesn't know the exact amount of progress the attacker has made, but assuming the honest blocks took the average expected time per block, the attacker's potential progress will be a Poisson distribution with expected value:
+
+\begin{equation}
+\lambda = z \frac{q}{p}
+\end{equation}
+
+\begin{equation}
+\sum_{k=0}^{\infty} \frac{\lambda^k e^{-\lambda}}{k!} \cdot
+\begin{cases}
+(q/p)^{(z-k)} & \text{if } k \leq z \\
+1 & \text{if } k > z
+\end{cases}
+\end{equation}
+
+Rearranging to avoid summing the infinite tail of the distribution:
+
+\begin{equation}
+1 - \sum_{k=0}^{z} \frac{\lambda^k e^{-\lambda}}{k!} \left(1-(q/p)^{(z-k)}\right)
+\end{equation}
+
+Converting to C code to calculate:
+
+Running some results, we can see the probability drop off exponentially with z.
+\end{document}

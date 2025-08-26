@@ -23,8 +23,81 @@ from pylatexenc.macrospec import LatexContextDb
 from .llm_client import UnifiedLLMClient
 from .error_handler import ChunkingError
 from config import LLM_CHUNK_CONFIG, PROMPTS
-# --- Main AST-based Chunking Logic ---
+from docx import Document
+from docx.document import Document as DocxDocument
 
+
+class DocxChunker:
+    def chunk_document(self, doc: DocxDocument):
+        chunks = []
+        hierarchy = []
+        current_paragraph_buffer = []
+
+        def flush_buffer():
+            if current_paragraph_buffer:
+                content = "\n".join(current_paragraph_buffer).strip()
+                if content:
+                    chunks.append({
+                        'type': 'paragraph', 'content': content,
+                        'parent_section': ' -> '.join(hierarchy),
+                        'metadata': {'hierarchy_path': hierarchy.copy()}
+                    })
+                current_paragraph_buffer.clear()
+
+        for para in doc.paragraphs:
+            style_name = para.style.name
+            level = 0
+            if style_name.startswith('Heading'):
+                try:
+                    level = int(style_name.split(' ')[-1])
+                except:
+                    level = 0
+            
+            if level > 0:
+                flush_buffer()
+                # Update hierarchy
+                hierarchy = hierarchy[:level-1]
+                hierarchy.append(para.text.strip())
+            else:
+                current_paragraph_buffer.append(para.text)
+        
+        flush_buffer() # Flush any remaining paragraph content at the end
+        return chunks
+
+# --- Specialized Chunker for .md ---
+class MarkdownChunker:
+    def chunk_document(self, content: str):
+        chunks = []
+        # Split by markdown headings (which are kept in the list)
+        split_pattern = r'(^#{1,6}\s.*$)'
+        parts = re.split(split_pattern, content, flags=re.MULTILINE)
+        
+        hierarchy = []
+        # Process content before the first heading
+        if parts[0] and parts[0].strip():
+             chunks.append({'type': 'paragraph', 'content': parts[0].strip(), 'parent_section': 'Preamble', 'metadata': {'hierarchy_path': []}})
+
+        for i in range(1, len(parts), 2):
+            heading = parts[i].strip()
+            heading_content = parts[i+1].strip()
+            
+            level = heading.find(' ')
+            title = heading[level:].strip()
+
+            hierarchy = hierarchy[:level-1]
+            hierarchy.append(title)
+
+            # Here you could add more regex to find code blocks, lists etc. within heading_content
+            # For now, we treat the whole content as a single paragraph for simplicity.
+            if heading_content:
+                chunks.append({
+                    'type': 'paragraph', 'content': heading_content,
+                    'parent_section': ' -> '.join(hierarchy),
+                    'metadata': {'hierarchy_path': hierarchy.copy()}
+                })
+        return chunks
+
+# --- Main AST-based Chunking Logic ---
 class ASTChunker:
     """
     Parses a LaTeX document into an AST and extracts structured, metadata-rich chunks.
@@ -41,7 +114,7 @@ class ASTChunker:
         self.chunks = []
         self.current_section_hierarchy = []
 
-    # --- AFTER ---
+
     def chunk_document(self):
         """
         (DEPRECATED) The main logic is now in the top-level 'extract_latex_sections'
@@ -123,15 +196,16 @@ class ASTChunker:
 
         metadata = self._extract_metadata(buffer)
         
-        self.chunks.append({
-            'type': 'paragraph',
-            'content': content,
-            'parent_section': ' -> '.join(self.current_section_hierarchy) or 'Preamble',
-            'metadata': {
-                'hierarchy_path': self.current_section_hierarchy.copy(),
-                **metadata
-            }
-        })
+        chunk_data = { 
+        'type': 'paragraph',
+        'content': content,
+        'parent_section': ' -> '.join(self.current_section_hierarchy) or 'Preamble',
+        'metadata': {
+            'hierarchy_path': self.current_section_hierarchy.copy(),
+            **metadata
+        }
+        }
+        self.chunks.append(chunk_data)# <-- INCREMENT COUNTER
 
     def _create_chunk_from_environment(self, node):
         """
@@ -141,16 +215,18 @@ class ASTChunker:
         content = node.latex_verbatim()
         metadata = self._extract_metadata(node.nodelist)
 
-        self.chunks.append({
-            'type': env_name,
-            'content': content,
-            'parent_section': ' -> '.join(self.current_section_hierarchy) or 'Preamble',
-            'metadata': {
-                'hierarchy_path': self.current_section_hierarchy.copy(),
-                'caption': self._find_caption(node.nodelist),
-                **metadata
-            }
-        })
+        chunk_data = {
+        'type': env_name,
+        'content': content,
+        'parent_section': ' -> '.join(self.current_section_hierarchy) or 'Preamble',
+        'metadata': {
+            'hierarchy_path': self.current_section_hierarchy.copy(),
+            'caption': self._find_caption(node.nodelist if node.nodelist else []),
+            **metadata
+        }
+        }
+        self.chunks.append(chunk_data)
+
 
     def _extract_metadata(self, nodelist):
         """
@@ -196,71 +272,100 @@ class ASTChunker:
                 return self._get_node_text(node.nodeargs[0])
         return None
 
+    def chunk_document_with_custom_sections(self):
+        """
+        A specialized method for .tex/.txt files that use the '% ---' delimiter.
+        It splits by the delimiter and then runs the core AST parser on each section.
+        """
+        initial_chunks = []
+        split_pattern = r'(% --- .+? ---)'
+        # Use self.full_content which has already resolved \input commands
+        parts = re.split(split_pattern, self.full_content)
+        
+        if parts[0] and parts[0].strip():
+            initial_chunks.append({
+                'type': 'paragraph', 'content': parts[0].strip(),
+                'parent_section': 'Preamble', 'metadata': {'hierarchy_path': ['Preamble']}
+            })
+
+        for i in range(1, len(parts), 2):
+            title_match = re.search(r'% --- (.+?) ---', parts[i])
+            if not title_match: continue
+            section_name = title_match.group(1).strip()
+            section_content = parts[i+1].strip()
+            if not section_content: continue
+            
+            try:
+                # Use a new instance of the parser for the sub-content. This is a clean way to isolate parsing.
+                sub_chunker = ASTChunker(section_content, source_directory=self.source_directory)
+                sub_chunker.current_section_hierarchy = [section_name]
+                sub_chunker._parse_node_list_into_chunks(sub_chunker.nodelist)
+                initial_chunks.extend(sub_chunker.chunks)
+            except Exception as e:
+                print(f"Warning: AST parsing failed for section '{section_name}'. Treating as raw text. Error: {e}")
+                initial_chunks.append({
+                    'type': 'paragraph', 'content': section_content,
+                    'parent_section': section_name, 'metadata': {'hierarchy_path': [section_name]}
+                })
+        return initial_chunks
+
     
 
 # --- Top-Level Functions ---
 
-def extract_latex_sections(content, source_path=None):
+def extract_document_sections(content, source_path):
     """
-    Main entry point for the new HYBRID document chunking.
-    This version includes a final LLM-enhancement pass for long paragraphs.
+    Main entry point for the new HYBRID, FORMAT-AWARE document chunking.
+    It inspects the file extension and dispatches to the correct chunker class.
     """
-    if not content or len(content.strip()) < 10:
-        raise ChunkingError("Invalid or empty content provided for chunking.")
-
-    # --- Step 1: Pre-process to resolve \input commands ---
-    source_dir = os.path.dirname(source_path) if source_path else None
-    temp_resolver = ASTChunker(content, source_directory=source_dir)
-    full_content = temp_resolver.full_content
+    if not source_path:
+        raise ValueError("source_path is required to determine file type.")
     
-    # --- Step 2: Split the document by custom section comments ---
-    section_pattern = r'% --- (.+?) ---\n(.*?)(?=% ---|\\end\{document\}|$)'
-    sections = re.findall(section_pattern, full_content, re.DOTALL)
-    if not sections:
-        sections = [("Document", full_content)]
-
+    _, extension = os.path.splitext(source_path)
     initial_chunks = []
-    for section_name, section_content in sections:
-        if not section_content.strip(): continue
-        try:
-            chunker = ASTChunker(section_content, source_directory=source_dir)
-            chunker.current_section_hierarchy = [section_name.strip()]
-            chunker._parse_node_list_into_chunks(chunker.nodelist)
-            initial_chunks.extend(chunker.chunks)
-        except Exception as e:
-            print(f"Warning: AST parsing failed for section '{section_name}'. Treating as raw text. Error: {e}")
-            initial_chunks.append({
-                'type': 'paragraph', 'content': section_content,
-                'parent_section': section_name.strip(),
-                'metadata': {'hierarchy_path': [section_name.strip()]}
-            })
 
-    # --- Step 3 (FINAL): LLM-Enhanced Semantic Splitting ---
+    if extension == '.tex' or extension == '.txt':
+        # Instantiate the ASTChunker and call its specialized method
+        chunker = ASTChunker(content, source_directory=os.path.dirname(source_path))
+        initial_chunks = chunker.chunk_document_with_custom_sections()
+
+    elif extension == '.docx':
+        chunker = DocxChunker()
+        initial_chunks = chunker.chunk_document(content)
+
+    elif extension == '.md':
+        chunker = MarkdownChunker()
+        initial_chunks = chunker.chunk_document(content)
+
+    else:
+        raise ChunkingError(f"Unsupported file format for chunking: {extension}")
+    
+    # --- SHARED FINAL PASSES FOR ALL FORMATS ---
+    
+    # Optional LLM Enhancement
     if not LLM_CHUNK_CONFIG['ENABLE_LLM_ENHANCEMENT']:
-        return initial_chunks
+        processed_chunks = initial_chunks
+    else:
+        log.info("-> Applying LLM-enhanced semantic splitting for long paragraphs...")
+        processed_chunks = []
+        llm_client = UnifiedLLMClient()
+        for chunk in initial_chunks:
+            if (chunk['type'] == 'paragraph' and 
+                len(chunk['content']) > LLM_CHUNK_CONFIG['SEMANTIC_SPLIT_THRESHOLD']):
+                log.info(f"    -> Splitting a long paragraph from section '{chunk['parent_section']}'...")
+                sub_chunks_content = _llm_semantic_split(chunk['content'], llm_client)
+                for sub_content in sub_chunks_content:
+                    new_chunk = chunk.copy()
+                    new_chunk['content'] = sub_content
+                    processed_chunks.append(new_chunk)
+            else:
+                processed_chunks.append(chunk)
 
-    print("  -> Applying LLM-enhanced semantic splitting for long paragraphs...")
-    final_chunks = []
-    llm_client = UnifiedLLMClient() # Create a client for this task
+    # FINAL STEP: Centralized ID Assignment
+    for i, chunk in enumerate(processed_chunks):
+        chunk['chunk_id'] = i
     
-    for chunk in initial_chunks:
-        # Only apply to long paragraphs
-        if (chunk['type'] == 'paragraph' and 
-            len(chunk['content']) > LLM_CHUNK_CONFIG['SEMANTIC_SPLIT_THRESHOLD']):
-            
-            print(f"    -> Splitting a long paragraph from section '{chunk['parent_section']}'...")
-            sub_chunks_content = llm_semantic_split(chunk['content'], llm_client)
-            
-            # Create new chunk objects for each split, inheriting metadata
-            for sub_content in sub_chunks_content:
-                new_chunk = chunk.copy() # Start with a copy of the original
-                new_chunk['content'] = sub_content
-                final_chunks.append(new_chunk)
-        else:
-            # If chunk is not a long paragraph, keep it as is
-            final_chunks.append(chunk)
-    
-    return final_chunks
+    return processed_chunks
 
 
 def group_chunks_by_section(chunks):

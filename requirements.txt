@@ -11,3 +11,4 @@ numpy
 google-generativeai
 requests
 python-dotenv
+python-docx

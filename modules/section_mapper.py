@@ -143,14 +143,19 @@ class SemanticMapper:
         return assignments
 
     def _create_empty_skeleton(self, node_level):
+        """
+        Recursively creates a deep copy of the skeleton, preserving all metadata
+        (like 'generative' flags) and setting up empty 'chunks' lists.
+        """
         new_level = {}
         for title, data in node_level.items():
-            new_level[title] = {
-                'prompt': data['prompt'],
-                'description': data['description'],
-                'chunks': [], # Start with an empty list for chunks
-                'subsections': self._create_empty_skeleton(data.get('subsections', {}))
-            }
+            # Start by copying ALL keys from the template (prompt, description, generative, etc.)
+            new_node = data.copy()
+            # Then, specifically set the 'chunks' list to be empty.
+            new_node['chunks'] = []
+            # Finally, recurse to build the subsections.
+            new_node['subsections'] = self._create_empty_skeleton(data.get('subsections', {}))
+            new_level[title] = new_node
         return new_level
 
 # --- Top-Level Functions ---

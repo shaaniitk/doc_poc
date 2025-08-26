@@ -409,6 +409,28 @@ Do not include the beginning of the very first sentence.
 Example Response:
 A purely peer-to-peer electronic cash|||---|||An electronic coin is defined|||---|||To address this, payees need
 Break Point Markers:
+""",
+
+
+    "llm_map_chunk_to_section": """
+You are a document structuring expert. Your task is to determine the single best section for a given chunk of text by understanding its content and the purpose of each available section.
+
+**Available Sections (Path and Description):**
+{section_details}
+
+**Chunk of Text to Categorize:**
+---
+{chunk_content}
+---
+
+**Instructions:**
+1.  Read the "Chunk of Text" and understand its core topic.
+2.  Review the "Available Sections" and their descriptions.
+3.  Determine which section is the **single most logical fit** for the chunk.
+4.  Respond with ONLY the full, exact path to that section (e.g., "10. Security Analysis -> 10.2 Attack Vector Calculations").
+5.  If absolutely no section is a good fit, respond with "UNCATEGORIZED".
+
+**Best Fit Section Path:**
 """
 
 }

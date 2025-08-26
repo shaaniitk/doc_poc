@@ -41,6 +41,10 @@ class OutputManager:
         The core recursive engine for saving each node's content.
         """
         for title, node_data in node_level.items():
+            # This check gracefully handles special, non-dictionary items
+            # like the 'Orphaned_Content' list, preventing the crash.
+            if not isinstance(node_data, dict):
+                continue
             current_path = path_parts + [title]
             
             # If the node has processed content, save it.
@@ -89,4 +93,11 @@ class OutputManager:
         with open(file_path, 'w', encoding='utf-8') as f:
             # Use indent=2 for nice, human-readable formatting
             json.dump(data, f, indent=2)
+        return file_path
+
+    def save_generic_output(self, filename, content):
+        """Saves a generic string content to a file in the session path."""
+        file_path = os.path.join(self.session_path, filename)
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(content)
         return file_path
