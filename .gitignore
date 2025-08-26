@@ -1,6 +1,9 @@
 # Environment variables
 .env
 
+# Hidden files and directories (all files starting with .)
+.*
+
 # Python
 __pycache__/
 *.pyc

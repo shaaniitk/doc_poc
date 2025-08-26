@@ -6,7 +6,7 @@ LLM_CONFIG = {
     "model": "mistral-small-latest",
     "api_key_env": "MISTRAL_API_KEY",
     "max_tokens": 2048,
-    "temperature": 0.2,
+    "temperature": 0.1,
     "timeout": 30
 }
 
