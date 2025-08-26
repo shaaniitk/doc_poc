@@ -25,7 +25,10 @@ from .error_handler import ChunkingError
 from config import LLM_CHUNK_CONFIG, PROMPTS
 from docx import Document
 from docx.document import Document as DocxDocument
+import logging
 
+# Configure logging
+log = logging.getLogger(__name__)
 
 class DocxChunker:
     def chunk_document(self, doc: DocxDocument):
@@ -390,7 +393,7 @@ def group_chunks_by_section(chunks):
     
     return grouped
 
-def llm_semantic_split(content, llm_client):
+def _llm_semantic_split(content, llm_client):
         """
         Uses an LLM to find semantic break points in a long piece of text.
         """

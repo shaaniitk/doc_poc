@@ -144,11 +144,16 @@ class IntelligentMapper:
     def _run_cohesion_pass(self, mapped_tree, orphans, all_chunks_in_order):
         """
         A deterministic pass to "rescue" orphans by checking their neighbors.
-        If an orphan's preceding and succeeding chunks were both mapped to the
-        same location, it's highly probable the orphan belongs there too.
+        This version uses a two-stage approach for robustness:
+        1. Analyze and create a list of "rescue missions".
+        2. Execute the rescue missions by modifying the tree.
         """
         log.info("--- Running Orphan Cohesion Pass ---")
-    
+        if not orphans:
+            return mapped_tree, []
+
+        # --- Stage 1: Analysis and Mission Planning ---
+        
         # Create a quick lookup map of chunk_id -> its final mapped path
         chunk_id_to_path_map = {}
         def build_path_map(node_level, path):
@@ -156,46 +161,67 @@ class IntelligentMapper:
                 if not isinstance(node_data, dict): continue
                 current_path = path + [title]
                 for chunk in node_data.get('chunks', []):
-                    chunk_id_to_path_map[chunk['chunk_id']] = current_path
+                    if 'chunk_id' in chunk:
+                        chunk_id_to_path_map[chunk['chunk_id']] = current_path
                 if node_data.get('subsections'):
                     build_path_map(node_data['subsections'], current_path)
-        
         build_path_map(mapped_tree, [])
 
-        rescued_orphans = []
+        rescue_missions = []
         remaining_orphans = []
 
         for orphan in orphans:
-            orphan_id = orphan['chunk_id']
-            prev_chunk_id = orphan_id - 1
-            next_chunk_id = orphan_id + 1
+            orphan_id = orphan.get('chunk_id')
+            if orphan_id is None:
+                remaining_orphans.append(orphan)
+                continue
 
-            prev_chunk_path = chunk_id_to_path_map.get(prev_chunk_id)
-            next_chunk_path = chunk_id_to_path_map.get(next_chunk_id)
+            prev_chunk_path = chunk_id_to_path_map.get(orphan_id - 1)
+            next_chunk_path = chunk_id_to_path_map.get(orphan_id + 1)
 
-            # The cohesion rule: if the chunk before and the chunk after went to the same place...
+            # The cohesion rule: if the chunk before and after went to the same place...
             if prev_chunk_path and prev_chunk_path == next_chunk_path:
-                # ...then this orphan belongs there too!
-                log.info(f"  -> Rescuing orphan chunk {orphan_id} based on neighbor cohesion. Target: {' -> '.join(prev_chunk_path)}")
-                
-                # Navigate to the target node and insert the orphan
-                target_node = mapped_tree
-                for part in prev_chunk_path:
-                    target_node = target_node[part]
-                
-                # We need to find the right place to insert it to maintain order
-                neighbor_index = -1
-                for i, chunk in enumerate(target_node['chunks']):
-                    if chunk['chunk_id'] == prev_chunk_id:
-                        neighbor_index = i
-                        break
-                
-                target_node['chunks'].insert(neighbor_index + 1, orphan)
-                rescued_orphans.append(orphan)
+                # Plan the mission instead of acting immediately
+                mission = {'orphan': orphan, 'target_path': prev_chunk_path, 'neighbor_id': orphan_id - 1}
+                rescue_missions.append(mission)
             else:
                 remaining_orphans.append(orphan)
         
-        log.info(f"  -> Cohesion Pass complete. Rescued: {len(rescued_orphans)}. Remaining orphans: {len(remaining_orphans)}.")
+        log.info(f"  -> Cohesion Pass Analysis complete. Planned {len(rescue_missions)} rescue mission(s).")
+
+        # --- Stage 2: Mission Execution ---
+
+        for mission in rescue_missions:
+            orphan_to_rescue = mission['orphan']
+            target_path = mission['target_path']
+            neighbor_id = mission['neighbor_id']
+            
+            try:
+                # This is the robust navigation logic that correctly finds the parent
+                target_parent = mapped_tree
+                for part in target_path[:-1]:
+                    target_parent = target_parent[part]['subsections']
+                
+                target_node = target_parent[target_path[-1]]
+                
+                # Find the index of the neighbor to insert after
+                neighbor_index = -1
+                for i, chunk in enumerate(target_node['chunks']):
+                    if chunk.get('chunk_id') == neighbor_id:
+                        neighbor_index = i
+                        break
+                
+                if neighbor_index != -1:
+                    target_node['chunks'].insert(neighbor_index + 1, orphan_to_rescue)
+                    log.info(f"  -> Rescued orphan chunk {orphan_to_rescue.get('chunk_id')} to {' -> '.join(target_path)}")
+                else:
+                    # Fallback if neighbor not found (should be rare)
+                    target_node['chunks'].append(orphan_to_rescue)
+
+            except Exception as e:
+                log.error(f"  -> Mission failed for chunk {orphan_to_rescue.get('chunk_id')}: {e}")
+                remaining_orphans.append(orphan_to_rescue)
+
         return mapped_tree, remaining_orphans
 
     # --- Helper Methods ---
