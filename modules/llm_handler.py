@@ -17,6 +17,9 @@ from .semantic_validator import SemanticValidator  # <-- IMPORT SEMANTIC VALIDAT
 from config import PROMPTS
 import re
 import logging
+import json
+from .semantic_validator import SemanticValidator
+from .section_mapper import SemanticMapper # <-- ADD THIS IMPORT
 
 # Configure logging
 log = logging.getLogger(__name__)
@@ -55,6 +58,10 @@ class HierarchicalProcessingAgent:
             if not isinstance(node_data, dict):
                 continue # Skip to the next item in the loop
             
+            if node_data.get('dynamic_subsections'):
+            # This is a dynamic section. First, we generate its structure.
+                self._dynamically_generate_subsections(node_data, title)
+
             current_path = path + [title]
             log.info(f"Processing Node: {' -> '.join(current_path)}")
 
@@ -153,3 +160,76 @@ class HierarchicalProcessingAgent:
         else:
             # If parsing fails, fall back to the already cleaned first version.
             return refactored_text
+    def _dynamically_generate_subsections(self, parent_node_data, parent_title):
+        """
+        A "first pass" that uses an LLM to discover and create a subsection
+        structure for a node marked as dynamic.
+        """
+        print(f"    -> Running dynamic subsection discovery for '{parent_title}'...")
+        # 1. Combine all chunks for the parent section into one text block.
+        all_content = "\n\n".join([chunk['content'] for chunk in parent_node_data.get('chunks', [])])
+        if not all_content:
+            return # Cannot generate subsections from no content
+
+        # 2. Call the LLM with the identifier prompt to get a list of titles.
+        try:
+            prompt = PROMPTS['dynamic_subsection_identifier'].format(
+                parent_section_title=parent_title,
+                text_content=all_content
+            )
+            response = self.llm_client.call_llm([{"role": "user", "content": prompt}])
+            subsection_titles = json.loads(response)
+            if not isinstance(subsection_titles, list):
+                raise ValueError("LLM did not return a valid JSON list.")
+        except Exception as e:
+            print(f"    -> WARNING: Failed to dynamically generate subsections for '{parent_title}'. Error: {e}")
+            return # Abort the dynamic process on failure
+
+        # 3. Dynamically create the new subsection nodes in the tree.
+        print(f"    -> Discovered {len(subsection_titles)} subsections to create.")
+        parent_node_data['subsections'] = {} # Clear any predefined subsections
+        for title in subsection_titles:
+            parent_node_data['subsections'][title] = {
+                'prompt': parent_node_data['prompt'], # Inherit prompt from parent
+                'description': f"Content related to {title}", # Create a dynamic description
+                'chunks': [],
+                'subsections': {}
+            }
+
+        # 4. Use the SemanticMapper to re-distribute the original chunks into the new subsections.
+        if parent_node_data.get('chunks'):
+            # This is a clever re-use of our existing powerful module!
+            mapper = SemanticMapper(template_name=None) # We don't need a full template
+            # Manually set the skeleton to our newly created dynamic one
+            mapper.skeleton = list(parent_node_data['subsections'].values())
+            mapper.section_paths, mapper.section_embeddings = mapper._prepare_skeleton_embeddings()
+            
+            # Re-assign the parent's chunks into the new child subsections
+            assignments = mapper.assign_chunks(parent_node_data['chunks'])
+            for section_title, assigned_chunks in assignments.items():
+                if section_title in parent_node_data['subsections']:
+                    parent_node_data['subsections'][section_title]['chunks'].extend(assigned_chunks)
+        
+        # 5. Clear the parent's chunks, as they have all been moved down.
+        parent_node_data['chunks'] = []
+
+    def process_single_node(self, node_title, node_data, full_processed_content):
+        """
+        Processes a single node, typically a generative one, using the full
+        processed content of the document as context.
+        """
+        print(f"  -> Running on-demand processing for generative node: '{node_title}'")
+        
+        # The "node_content" for a generative prompt is the full document text.
+        context = {
+            "node_path": node_title,
+            "global_context": self.global_context,
+            "parent_context": "N/A", # No parent in this context
+            "node_content": full_processed_content 
+        }
+
+        # Use the node's specific prompt for generation
+        generated_content = self._strategy_refactor_content(context, node_data.get('prompt', ''))
+        node_data['processed_content'] = generated_content
+        
+        return node_data

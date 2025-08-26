@@ -20,9 +20,9 @@ import os
 import re
 from pylatexenc.latexwalker import LatexWalker, LatexCharsNode, LatexMacroNode, LatexEnvironmentNode
 from pylatexenc.macrospec import LatexContextDb
-
+from .llm_client import UnifiedLLMClient
 from .error_handler import ChunkingError
-
+from config import LLM_CHUNK_CONFIG, PROMPTS
 # --- Main AST-based Chunking Logic ---
 
 class ASTChunker:
@@ -41,13 +41,14 @@ class ASTChunker:
         self.chunks = []
         self.current_section_hierarchy = []
 
+    # --- AFTER ---
     def chunk_document(self):
         """
-        Processes the entire document AST and returns a list of enriched chunks.
+        (DEPRECATED) The main logic is now in the top-level 'extract_latex_sections'
+        function to support the hybrid parsing strategy. This method is kept
+        for potential direct instantiation if ever needed.
         """
-        self._traverse_nodes(self.nodelist)
-        if not self.chunks:
-            raise ChunkingError("AST parser failed to produce any chunks. The document might be empty or invalid.")
+        self._parse_node_list_into_chunks(self.nodelist)
         return self.chunks
 
     def _resolve_inputs(self, content, base_dir):
@@ -74,7 +75,7 @@ class ASTChunker:
 
         return input_pattern.sub(replacer, content)
 
-    def _traverse_nodes(self, nodelist):
+    def _parse_node_list_into_chunks(self, nodelist):
         """
         Recursively traverses the AST node list to identify and create chunks.
         """
@@ -195,33 +196,71 @@ class ASTChunker:
                 return self._get_node_text(node.nodeargs[0])
         return None
 
+    
+
 # --- Top-Level Functions ---
 
 def extract_latex_sections(content, source_path=None):
     """
-    Main entry point for state-of-the-art document chunking.
-
-    This function utilizes the ASTChunker to parse and chunk a LaTeX document,
-    providing a structured, metadata-rich output.
-
-    Args:
-        content (str): The raw LaTeX document content.
-        source_path (str, optional): The path to the source file. Required for
-                                     resolving multi-file projects (`\input`).
-
-    Returns:
-        list: A list of structured chunk dictionaries.
+    Main entry point for the new HYBRID document chunking.
+    This version includes a final LLM-enhancement pass for long paragraphs.
     """
     if not content or len(content.strip()) < 10:
         raise ChunkingError("Invalid or empty content provided for chunking.")
+
+    # --- Step 1: Pre-process to resolve \input commands ---
+    source_dir = os.path.dirname(source_path) if source_path else None
+    temp_resolver = ASTChunker(content, source_directory=source_dir)
+    full_content = temp_resolver.full_content
     
-    try:
-        source_dir = os.path.dirname(source_path) if source_path else None
-        chunker = ASTChunker(content, source_directory=source_dir)
-        return chunker.chunk_document()
-    except Exception as e:
-        # Provide a more informative error message
-        raise ChunkingError(f"AST-based chunking failed: {e}. Check for severe LaTeX syntax errors.")
+    # --- Step 2: Split the document by custom section comments ---
+    section_pattern = r'% --- (.+?) ---\n(.*?)(?=% ---|\\end\{document\}|$)'
+    sections = re.findall(section_pattern, full_content, re.DOTALL)
+    if not sections:
+        sections = [("Document", full_content)]
+
+    initial_chunks = []
+    for section_name, section_content in sections:
+        if not section_content.strip(): continue
+        try:
+            chunker = ASTChunker(section_content, source_directory=source_dir)
+            chunker.current_section_hierarchy = [section_name.strip()]
+            chunker._parse_node_list_into_chunks(chunker.nodelist)
+            initial_chunks.extend(chunker.chunks)
+        except Exception as e:
+            print(f"Warning: AST parsing failed for section '{section_name}'. Treating as raw text. Error: {e}")
+            initial_chunks.append({
+                'type': 'paragraph', 'content': section_content,
+                'parent_section': section_name.strip(),
+                'metadata': {'hierarchy_path': [section_name.strip()]}
+            })
+
+    # --- Step 3 (FINAL): LLM-Enhanced Semantic Splitting ---
+    if not LLM_CHUNK_CONFIG['ENABLE_LLM_ENHANCEMENT']:
+        return initial_chunks
+
+    print("  -> Applying LLM-enhanced semantic splitting for long paragraphs...")
+    final_chunks = []
+    llm_client = UnifiedLLMClient() # Create a client for this task
+    
+    for chunk in initial_chunks:
+        # Only apply to long paragraphs
+        if (chunk['type'] == 'paragraph' and 
+            len(chunk['content']) > LLM_CHUNK_CONFIG['SEMANTIC_SPLIT_THRESHOLD']):
+            
+            print(f"    -> Splitting a long paragraph from section '{chunk['parent_section']}'...")
+            sub_chunks_content = llm_semantic_split(chunk['content'], llm_client)
+            
+            # Create new chunk objects for each split, inheriting metadata
+            for sub_content in sub_chunks_content:
+                new_chunk = chunk.copy() # Start with a copy of the original
+                new_chunk['content'] = sub_content
+                final_chunks.append(new_chunk)
+        else:
+            # If chunk is not a long paragraph, keep it as is
+            final_chunks.append(chunk)
+    
+    return final_chunks
 
 
 def group_chunks_by_section(chunks):
@@ -245,3 +284,43 @@ def group_chunks_by_section(chunks):
         grouped[top_level_section].append(chunk)
     
     return grouped
+
+def llm_semantic_split(content, llm_client):
+        """
+        Uses an LLM to find semantic break points in a long piece of text.
+        """
+        try:
+            prompt = PROMPTS['semantic_split_paragraph'].format(text_content=content)
+            response = llm_client.call_llm([{"role": "user", "content": prompt}])
+            
+            # Split the response into markers and clean them up
+            break_markers = [m.strip() for m in response.split('|||---|||') if m.strip()]
+            
+            if not break_markers:
+                return [content] # LLM found no good splits
+
+            # Use the markers to split the original content string
+            split_points = []
+            for marker in break_markers:
+                # Find the position of the marker in the original text
+                pos = content.find(marker)
+                if pos != -1:
+                    split_points.append(pos)
+            
+            if not split_points:
+                return [content]
+
+            # Sort points and split the content
+            split_points.sort()
+            chunks = []
+            last_pos = 0
+            for pos in split_points:
+                chunks.append(content[last_pos:pos].strip())
+                last_pos = pos
+            chunks.append(content[last_pos:].strip())
+            
+            return [c for c in chunks if c] # Return non-empty chunks
+
+        except Exception as e:
+            print(f"Warning: LLM semantic split failed. Returning original chunk. Error: {e}")
+            return [content]

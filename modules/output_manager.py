@@ -7,6 +7,9 @@ final, processed document tree into a valid, well-formatted output file.
 """
 import os
 from datetime import datetime
+from config import OUTPUT_FORMATS
+# --- ADD this new method inside the OutputManager class ---
+import json # Make sure 'import json' is at the top of the file
 # No changes to imports needed
 
 class OutputManager:
@@ -79,3 +82,11 @@ class OutputManager:
                 f.write(f"{entry}\n")
         
         return log_path
+    
+    def save_json_output(self, filename, data):
+        """Saves a Python dictionary or list to a formatted JSON file."""
+        file_path = os.path.join(self.session_path, filename)
+        with open(file_path, 'w', encoding='utf-8') as f:
+            # Use indent=2 for nice, human-readable formatting
+            json.dump(data, f, indent=2)
+        return file_path

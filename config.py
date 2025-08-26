@@ -2,9 +2,9 @@
 
 # LLM Configuration
 LLM_CONFIG = {
-    "provider": "gemini",  # Options: "mistral", "openai", "huggingface", "gemini", "vertexai"
-    "model": "gemini-1.5-flash",
-    "api_key_env": "GEMINI_API_KEY",
+    "provider": "mistral",  # Options: "mistral", "openai", "huggingface", "gemini", "vertexai"
+    "model": "mistral-small-latest",
+    "api_key_env": "MISTRAL_API_KEY",
     "max_tokens": 2048,
     "temperature": 0.2,
     "timeout": 30
@@ -20,6 +20,13 @@ SEMANTIC_MAPPING_CONFIG = {
     "similarity_threshold": 0.3
 }
 
+# LLM-Enhanced Chunking Configuration
+LLM_CHUNK_CONFIG = {
+    # The minimum number of characters a paragraph chunk must have to be considered for a semantic split.
+    "SEMANTIC_SPLIT_THRESHOLD": 1500,
+    # Whether to enable this feature. Allows for easy toggling for performance.
+    "ENABLE_LLM_ENHANCEMENT": True
+}
 
 # Alternative LLM providers
 LLM_PROVIDERS = {
@@ -71,7 +78,152 @@ DOCUMENT_TEMPLATES = {
         {"section": "11. Major and Minor Assumptions", "prompt": "Format as LaTeX with section title 'Major and Minor Assumptions'. Preserve all technical content exactly.", "description": "A section to consolidate all the key assumptions, both major and minor, that the system's security and functionality rely on."},
         {"section": "12. Calculations", "prompt": "Format as LaTeX with section title 'Calculations'. Preserve all technical content exactly.", "description": "Presents the mathematical analysis and calculations, particularly regarding the probability of an attacker catching up to the honest chain."},
         {"section": "13. Conclusion", "prompt": "Format as LaTeX with section title 'Conclusion'. Preserve all technical content exactly.", "description": "The concluding section summarizing the benefits of the proposed electronic cash system, such as eliminating the need for trust and protecting sellers."}
-    ]
+    ],
+     "bitcoin_paper_hierarchical": {
+        "Summary": {
+            "generative": True, # <-- ADD THIS FLAG
+            "prompt": "You are a technical writer. Based on the entire document's content, write a new, high-level summary. It should be a 3-4 paragraph executive summary that explains the core problem, the proposed solution (peer-to-peer network, proof-of-work, digital signatures), and the key benefits (trustless, low transaction costs, fraud protection) in clear, accessible language.",
+            "description": "A high-level executive summary of the entire document. This section should synthesize the key features, problems, and solutions described throughout the paper into an easy-to-understand overview.",
+            "chunks": [],
+            "subsections": {}
+        },
+        "Abstract": {
+            "generative": True,
+            "prompt": "You are a LaTeX expert. Refactor the following content into a formal, concise abstract...",
+            "description": "A concise, formal summary of the paper's main points...",
+            "chunks": [],
+            "subsections": {}
+        },
+        "1. Introduction": {
+            "prompt": "You are a LaTeX expert. Refactor the following introductory content for clarity and logical flow...",
+            "description": "The introductory section explaining the background of commerce on the Internet...",
+            "chunks": [],
+            "subsections": {}
+        },
+        "2. Transactions": {
+            "prompt": "You are a LaTeX expert. Refactor the following content to precisely define an electronic coin...",
+            "description": "This section details the fundamental definition of an electronic coin as a chain of digital signatures...",
+            "chunks": [],
+            "subsections": {}
+        },
+        "3. Timestamp Server": {
+            "prompt": "You are a LaTeX expert. Refactor the following content to clearly explain the concept of a distributed timestamp server...",
+            "description": "Explains the proposed solution to the double-spending problem by using a distributed timestamp server...",
+            "chunks": [],
+            "subsections": {}
+        },
+        "4. Proof-of-Work": {
+            "prompt": "You are a LaTeX expert. Refactor the following content to explain how proof-of-work is used...",
+            "description": "Describes the implementation of the distributed timestamp server using a proof-of-work system...",
+            "chunks": [],
+            "subsections": {}
+        },
+        "5. Network": {
+            "prompt": "You are a LaTeX expert. Refactor the following steps describing the network's operation...",
+            "description": "Outlines the step-by-step process for running the peer-to-peer network...",
+            "chunks": [],
+            "subsections": {}
+        },
+        "6. Incentive": {
+            "prompt": "You are a LaTeX expert. Refactor the following content to clearly explain the economic incentives...",
+            "description": "Details the incentive system for nodes participating in the network...",
+            "chunks": [],
+            "subsections": {}
+        },
+        "7. Reclaiming Disk Space": {
+            "prompt": "You are a LaTeX expert. Refactor the following content to explain the method for reclaiming disk space...",
+            "description": "Discusses a method for pruning the blockchain to save disk space...",
+            "chunks": [],
+            "subsections": {}
+        },
+        "8. Simplified Payment Verification": {
+            "prompt": "You are a LaTeX expert. Refactor the following content to explain the Simplified Payment Verification (SPV) method...",
+            "description": "Explains how payment verification can be achieved without running a full network node...",
+            "chunks": [],
+            "subsections": {}
+        },
+        "9. Combining and Splitting Value": {
+            "prompt": "You are a LaTeX expert. Refactor the following content to clearly explain the practical mechanics of transactions...",
+            "description": "Describes the practical functionality of how transactions can handle value...",
+            "chunks": [],
+            "subsections": {}
+        },
+        "10. Security Analysis": {
+            "prompt": "You are a security expert and LaTeX professional. Refactor the following content to provide an overview of the system's security...",
+            "description": "An overarching section that covers the security properties of the system...",
+            "chunks": [],
+            "subsections": {
+                "10.1 Privacy Model": {
+                    "prompt": "You are a LaTeX expert. Refactor this content to focus specifically on the privacy model...",
+                    "description": "Addresses the privacy model of the system...",
+                    "chunks": [],
+                    "subsections": {}
+                },
+                "10.2 Attack Vector Calculations": {
+                    "prompt": "You are a LaTeX expert and mathematician. Refactor the following text and equations...",
+                    "description": "Presents the mathematical analysis of the system's security against an attacker...",
+                    "chunks": [],
+                    "subsections": {}
+                }
+            }
+        },
+        # --- NEW ASSUMPTIONS SECTION ---
+        "11. Assumptions": {
+            "prompt": "You are a system analyst and LaTeX expert. Based on the document content, provide a brief introductory paragraph for a section that will outline the core assumptions the system relies on. This paragraph should set the stage for the major and minor subsections.",
+            "description": "A section dedicated to explicitly stating the underlying assumptions required for the Bitcoin protocol to function securely and effectively. This includes assumptions about network behavior and participant honesty.",
+            "chunks": [],
+            "subsections": {
+                "11.1 Major Assumptions": {
+                    "prompt": "You are a system analyst and LaTeX expert. From the provided text, extract and clearly articulate the most critical assumptions for the system's security. The primary assumption is that honest nodes control a majority of CPU power. Explain the implications of this assumption.",
+                    "description": "Details the most critical, foundational assumptions of the system. The foremost assumption is that the majority of the CPU power in the network is controlled by honest nodes that are not conspiring to attack the network.",
+                    "chunks": [],
+                    "subsections": {}
+                },
+                "11.2 Minor Assumptions": {
+                    "prompt": "You are a system analyst and LaTeX expert. From the provided text, identify and list any secondary or implicit assumptions. This could include assumptions about network latency (nodes receive broadcasts in a timely manner) or participant behavior (nodes are economically rational).",
+                    "description": "Outlines other, less critical but still important, assumptions. This includes assumptions such as nodes having reliable network connectivity, the practicality of storing block headers for SPV, and that participants generally act in their own economic self-interest.",
+                    "chunks": [],
+                    "subsections": {}
+                }
+            }
+        },
+        "12. Conclusion": {
+            "prompt": "You are a LaTeX expert. Refactor the following content into a strong, formal conclusion...",
+            "description": "The concluding section that summarizes the paper's proposal...",
+            "chunks": [],
+            "subsections": {}
+        },
+        "13. References": {
+            "prompt": "You are a LaTeX expert. Format the following content as a standard 'References' section...",
+            "description": "The list of citations and prior work referenced in the paper...",
+            "chunks": [],
+            "subsections": {}
+        },
+        "14. System Tests": {
+        # --- ADD THIS FLAG ---
+        "dynamic_subsections": True,
+        # This prompt is used for the *content* of each dynamically created subsection
+        "prompt": "You are a QA analyst and LaTeX expert. Refactor the following test case for clarity, focusing on the setup, actions, and expected results. Preserve all technical details and code snippets.",
+        # The description helps map the parent section correctly
+        "description": "A section detailing the various test cases performed on the system to validate its functionality and security. The subsections will be generated dynamically based on the number of tests found in the content.",
+        "chunks": [],
+        "subsections": {}
+        }
+    },
+
+    "dynamic_subsection_identifier": """
+    You are a document structuring AI. Your task is to analyze a large block of text from a "{parent_section_title}" section and identify all the distinct, logical subsections within it.
+Content to Analyze:
+{text_content}
+Instructions:
+Read the content and identify the natural divisions or sub-topics.
+For each distinct sub-topic, create a concise and appropriate subsection title.
+Return these titles as a JSON-formatted list of strings.
+Do not include any other text or explanation. Your output must be only the JSON list.
+Example Response:
+["Test Case 1: Valid Single Transaction", "Test Case 2: Double-Spend Attempt", "Test Case 3: Transaction with Multiple Inputs"]
+JSON Output:
+"""
 }
 
 # Output Formats
@@ -90,45 +242,6 @@ OUTPUT_FORMATS = {
         "extension": ".json",
         "header": "",
         "footer": ""
-    }
-}
-# Below example for hierarchical document template
-DOCUMENT_TEMPLATES = {
-    "bitcoin_paper_hierarchical": {
-        # Top-level sections are keys
-        "1. Introduction": {
-            "prompt": "Process the introduction...",
-            "description": "The introduction explaining the background...",
-            "chunks": [], # Placeholder for chunks belonging directly to this section
-            "subsections": {} # Placeholder for nested subsections
-        },
-        "2. Transactions": {
-            "prompt": "Process the main content about transactions...",
-            "description": "Details the definition of an electronic coin as a chain of digital signatures...",
-            "chunks": [],
-            "subsections": {
-                # Nested subsections are keys within the 'subsections' dict
-                "2.1 Ownership Model": {
-                    "prompt": "Focus on the ownership aspect of transactions...",
-                    "description": "Explains the model of ownership transfer using digital signatures.",
-                    "chunks": [],
-                    "subsections": {} # Can be nested further
-                },
-                "2.2 Double-Spending Problem": {
-                    "prompt": "Explain the double-spending problem...",
-                    "description": "Describes the fundamental problem of double-spending in a digital cash system.",
-                    "chunks": [],
-                    "subsections": {}
-                }
-            }
-        },
-        # ... other top-level sections ...
-        "13. Conclusion": {
-            "prompt": "Conclude the paper...",
-            "description": "The concluding section summarizing the benefits...",
-            "chunks": [],
-            "subsections": {}
-        }
     }
 }
 
@@ -281,6 +394,21 @@ You are a technical writer creating a smooth narrative flow in a document. Your 
 - The output should be the transition sentence itself, formatted as a LaTeX paragraph.
 
 **Transition Sentence:**
+""",
+
+"semantic_split_paragraph": """
+You are a text analysis expert. Your task is to identify the natural thematic break points within a long piece of text.
+Text to Analyze:
+{text_content}
+Instructions:
+Read the entire text to understand its flow and topics.
+Identify the most logical places where the text shifts to a new sub-topic.
+For each break point you identify, respond with ONLY the first 5-7 words of the sentence that begins the new sub-topic.
+Separate each of these "break point markers" with the unique separator |||---|||.
+Do not include the beginning of the very first sentence.
+Example Response:
+A purely peer-to-peer electronic cash|||---|||An electronic coin is defined|||---|||To address this, payees need
+Break Point Markers:
 """
 
 }

@@ -88,7 +88,7 @@ class UnifiedLLMClient:
         genai.configure(api_key=api_key)
 
         # Correctly convert the standard 'messages' format to Gemini's format
-        system_prompt = ""
+        system_prompt = None
         gemini_messages = []
         for msg in messages:
             if msg['role'] == 'system':
@@ -96,9 +96,20 @@ class UnifiedLLMClient:
                 continue
             # Gemini alternates between 'user' and 'model' (for assistant) roles
             role = 'model' if msg['role'] == 'assistant' else 'user'
-            gemini_messages.append({'role': role, 'parts': [msg['content']]})
+            content = msg['content']
+            # Ensure content is properly formatted for Gemini
+            if not content or not content.strip():
+                raise LLMError(f"Empty content detected for role {role}")
+            gemini_messages.append({'role': role, 'parts': [content]})
 
-        model = genai.GenerativeModel(model_name, system_instruction=system_prompt)
+        # --- REFINED INSTANTIATION ---
+         # Build model arguments dynamically to keep the code DRY
+        model_kwargs = {}
+        if system_prompt:
+            model_kwargs['system_instruction'] = system_prompt
+
+        model = genai.GenerativeModel(model_name, **model_kwargs)
+    
         
         generation_config = genai.types.GenerationConfig(
             max_output_tokens=max_tokens,
@@ -108,8 +119,6 @@ class UnifiedLLMClient:
         if stream:
             raise NotImplementedError("Streaming is not yet implemented for the Gemini client.")
 
-        # Pass the structured message list to the API, not a flattened string
-        # Also add safety settings to prevent content blocking issues
         response = model.generate_content(
             gemini_messages,
             generation_config=generation_config,

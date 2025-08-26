@@ -83,16 +83,21 @@ class DocumentPolisher:
         )
         return self.llm_client.call_llm([{"role": "user", "content": prompt}])
 
+    # --- AFTER ---
     def _standardize_terms_recursive(self, node_level, key_terms_list):
         """Recursively traverses the tree, standardizing text in each node."""
         for node_data in node_level.values():
+            # This check gracefully handles special, non-dictionary items like the 'Orphaned_Content' list.
+            if not isinstance(node_data, dict):
+                continue
+
             content = node_data.get('processed_content')
             if content:
                 node_data['processed_content'] = self._llm_standardize_text(content, key_terms_list)
             
             if node_data.get('subsections'):
                 self._standardize_terms_recursive(node_data['subsections'], key_terms_list)
-        return node_level
+            return node_level
 
     @robust_llm_call(max_retries=1)
     def _llm_standardize_text(self, text_content, key_terms_list):
@@ -107,14 +112,17 @@ class DocumentPolisher:
 
     def _coherence_optimization_pass(self, tree):
         """Initiates the recursive process to add transition sentences."""
-        return self._add_transitions_recursive(tree)
+        # The recursive function modifies the tree in place.
+        self._add_transitions_recursive(tree)
+        # We must return the modified tree itself.
+        return tree
 
     def _add_transitions_recursive(self, node_level):
         """
         Recursively traverses the tree, adding transitions between sibling nodes.
         """
         # Convert node dictionary to a list of (title, data) tuples to work with indices
-        nodes_as_list = list(node_level.items())
+        nodes_as_list = [(title, data) for title, data in node_level.items() if isinstance(data, dict)]
         
         # Iterate through adjacent pairs of nodes at the current level
         for i in range(len(nodes_as_list) - 1):
@@ -135,10 +143,12 @@ class DocumentPolisher:
         
         # After processing siblings, recurse into the children of each node
         for _, node_data in nodes_as_list:
+        # This check gracefully handles special, non-dictionary items.
+            if not isinstance(node_data, dict):
+                continue
+
             if node_data.get('subsections'):
                 self._add_transitions_recursive(node_data['subsections'])
-                
-        return node_level
     
     @robust_llm_call(max_retries=1)
     def _llm_generate_transition(self, prev_title, prev_content, current_title, current_content):
