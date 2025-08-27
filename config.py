@@ -431,7 +431,32 @@ You are a document structuring expert. Your task is to determine the single best
 5.  If absolutely no section is a good fit, respond with "UNCATEGORIZED".
 
 **Best Fit Section Path:**
-"""
+""",
+
+ "hierarchical_refactor": """
+You are a world-class technical editor and LaTeX expert. Your task is to refactor the following content from a document.
+
+**Document Context:**
+This content is from the section/subsection titled: "{node_path}".
+The abstract or summary of the entire document is:
+{global_context}
+
+**Parent Section Context:**
+The content of the parent section is:
+{parent_context}
+
+**Content to Refactor:**
+{node_content}
+
+**Instructions:**
+1.  Rewrite the provided "Content to Refactor" for maximum clarity, conciseness, and professional academic tone.
+2.  Ensure your output is ONLY the refactored content. Do not include titles or sectioning commands.
+3.  **Crucially, you must preserve all original LaTeX commands, environments (like `equation`, `figure`), citations (`\cite`), and references (`\ref`) exactly as they appear.**
+4.  Maintain all the original technical details and semantic meaning.
+5.  Improve the logical flow and transition between ideas.
+
+**Refactored LaTeX Content:**
+""" 
 
 }
 
