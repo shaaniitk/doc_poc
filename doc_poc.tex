@@ -1,0 +1,153 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{geometry}
+\geometry{a4paper, margin=1in}
+
+\title{System Architecture and Algorithms for an Advanced Document Processing Pipeline}
+\author{Designed via Iterative Collaboration}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This document details the system architecture and core algorithms of a state-of-the-art pipeline for the automated refactoring and augmentation of complex documents. The system is designed to be format-agnostic, modular, and highly intelligent, leveraging a hybrid approach that combines deterministic parsing, semantic analysis, and advanced Large Language Model (LLM) capabilities. The foundational principle of the architecture is the conversion of source documents into a standardized, hierarchical tree structure. This tree serves as the central data object upon which all subsequent processing, including contextual refactoring, structural augmentation, and content generation, is performed. The pipeline is implemented as a series of discrete, purpose-built modules that handle specific stages, from initial document deconstruction to the final, polished output generation, ensuring robustness, maintainability, and extensibility.
+\end{abstract}
+
+\section{Introduction}
+The automated processing of unstructured or semi-structured documents presents significant challenges, particularly when dealing with complex formats like LaTeX or structured Word documents. Traditional methods often rely on fragile regular expressions or simplistic text processing, failing to capture the rich hierarchical and semantic relationships inherent in a well-authored document.
+
+This pipeline addresses these challenges by establishing a robust, multi-stage process centered around a hierarchical document representation. Instead of treating a document as a flat string of text, it is first deconstructed into a tree of semantically complete nodes. This "document tree" becomes the canvas for a series of powerful transformations, orchestrated by a central processing agent that uses contextual information from the tree to make intelligent decisions.
+
+The core stages of the pipeline are as follows:
+\begin{enumerate}
+    \item \textbf{Document Ingestion and Hierarchical Deconstruction:} Parsing source files of various formats into a standardized list of "chunks."
+    \item \textbf{Intelligent Mapping:} Assigning each chunk to its most logical position within a predefined hierarchical document template using a multi-pass strategy.
+    \item \textbf{Hierarchical Content Processing:} Traversing the resulting document tree and using a context-aware LLM agent to refactor or generate content for each node.
+    \item \textbf{Document Augmentation:} (Optional) Intelligently combining two document trees through structural grafting and content weaving.
+    \item \textbf{Post-Processing and Output Generation:} Performing a final, global polishing pass and rendering the final document tree into the desired output format.
+\end{enumerate}
+
+This document will detail the algorithms and design decisions behind each of these stages.
+
+\section{Document Ingestion and Hierarchical Deconstruction}
+The primary goal of this stage is to convert a source file (e.g., \texttt{.tex}, \texttt{.docx}, \texttt{.md}) into a standardized list of chunk dictionaries. Each chunk contains its content and critical metadata about its original position in the document's hierarchy. This is handled by the \texttt{chunker.py} module.
+
+\subsection{The Format-Aware Dispatcher}
+The main entry point, \texttt{extract\_document\_sections}, acts as a dispatcher. It first inspects the file extension of the source document and delegates the parsing task to a specialized class designed for that format. This ensures that the optimal parsing strategy is used for each file type.
+
+\subsection{Strategy for LaTeX (\texttt{.tex}) and Text (\texttt{.txt}) Files}
+A sophisticated hybrid strategy is employed for files using a custom section delimiter format (\texttt{\% --- Section Name ---}).
+\begin{enumerate}
+    \item \textbf{High-Level Split:} A robust \texttt{re.split()} operation first divides the entire document content by the \texttt{\% --- ... ---} delimiters. This is more reliable than \texttt{re.findall} and correctly separates the document into its major user-defined sections.
+    \item \textbf{AST-Based Parsing:} For each of these high-level sections, an \textbf{Abstract Syntax Tree (AST)} parser (\texttt{ASTChunker}, powered by the \texttt{pylatexenc} library) is used. This parser understands LaTeX syntax and correctly deconstructs the section's content into syntactically aware chunks, such as paragraphs, \texttt{\textbackslash begin\{equation\}...\textbackslash end\{equation\}}, and \texttt{\textbackslash begin\{verbatim\}...\textbackslash end\{verbatim\}}. Critically, this preserves the integrity of LaTeX environments.
+\end{enumerate}
+
+\subsection{Strategy for Word (\texttt{.docx}) and Markdown (\texttt{.md}) Files}
+\begin{itemize}
+    \item \textbf{DocxChunker:} For \texttt{.docx} files, this class uses the \texttt{python-docx} library. It iterates through the document's paragraphs and determines the hierarchy based on heading styles (e.g., "Heading 1", "Heading 2").
+    \item \textbf{MarkdownChunker:} For \texttt{.md} files, this class uses regex to split the document by Markdown headings (\texttt{\#}, \texttt{\#\#}, etc.) to establish the hierarchy.
+\end{itemize}
+
+\subsection{LLM-Enhanced Semantic Splitting}
+As a final, optional pass, any "paragraph" chunk that exceeds a configurable character threshold (e.g., 1500 characters) is sent to an LLM. The LLM is prompted to identify natural thematic break points within the long paragraph, which is then split into smaller, more semantically coherent chunks.
+
+\subsection{Future Enhancements}
+\begin{itemize}
+    \item \textbf{Table Content Extraction:} The current system preserves tables as whole chunks. A future enhancement would be to parse the internal structure of tables (rows and columns) into a structured format (like JSON), allowing the LLM to understand and even modify tabular data.
+    \item \textbf{Image and Figure Handling:} The system could be extended to recognize image inclusions (\texttt{\textbackslash includegraphics}) and, through multi-modal models, even generate captions or analyze the image content.
+    \item \textbf{Handling Custom LaTeX Macros:} A pre-processing step could be added to identify and expand user-defined \texttt{\textbackslash newcommand} macros to improve the accuracy of the AST parser.
+\end{itemize}
+
+\section{Intelligent Mapping and Orphan Remediation}
+Once the document is deconstructed into a list of chunks, the \texttt{IntelligentMapper} module assigns each chunk to its proper place in a predefined, hierarchical document template. This is a crucial step that builds the structured tree for the rest of the pipeline. It uses a sophisticated, three-pass strategy to maximize accuracy.
+
+\subsection{Pass 1: High-Confidence Semantic Mapping}
+This pass is designed for speed and accuracy on "easy" chunks.
+\begin{enumerate}
+    \item \textbf{Vectorization:} A sentence-transformer model (\texttt{all-MiniLM-L6-v2}) converts the text content of every chunk and the \texttt{description} of every section/subsection in the template into numerical vectors (embeddings).
+    \item \textbf{Similarity Calculation:} A cosine similarity matrix is computed to find the semantic distance between every chunk and every possible destination section.
+    \item \textbf{Thresholding:} Each chunk is assigned to its best-matching section, but only if the similarity score is above a configurable threshold (e.g., 0.3). Chunks that do not meet this threshold are considered "orphans" and are passed to the next stage.
+\end{enumerate}
+
+\subsection{Pass 2: LLM-Powered Mapping}
+This optional pass is for ambiguous chunks that failed the high-confidence semantic pass. It leverages the superior contextual understanding of a powerful LLM. For each orphan, a prompt is constructed that includes the chunk's content and a detailed list of all available sections and their descriptions. The LLM is then asked to make a single, best-fit decision.
+
+\subsection{Pass 3: Contextual Cohesion Pass}
+This final, deterministic pass is designed to rescue orphans that lack semantic prose (e.g., code blocks, equations). It operates on the principle of "neighborly context." For each remaining orphan, it checks the original, sequential list of chunks. If the chunk that came immediately before it and the chunk that came immediately after it were both successfully mapped to the \textit{exact same section}, the orphan is "rescued" and inserted between them. This correctly places technical content with its surrounding explanatory text.
+
+\subsection{Future Enhancements}
+\begin{itemize}
+    \item \textbf{Graph-Based Mapping:} The system could build a graph of the document based on citations (\texttt{\textbackslash cite}) and references (\texttt{\textbackslash ref}). This graph could be used to inform the mapping, ensuring that a chunk that references a figure is mapped to the same section as that figure.
+    \item \textbf{Self-Correction Loop:} If a section ends up with a large number of chunks that were all mapped with very low confidence scores, the system could flag this section for review or trigger a specialized LLM prompt to determine if a new subsection should be created.
+\end{itemize}
+
+\section{Hierarchical Content Processing (LLM Core Engine)}
+The \texttt{HierarchicalProcessingAgent} is the core of the system. It takes the final mapped tree and intelligently refactors or generates content for each node.
+
+\subsection{The Recursive Processing Model}
+The agent's primary method is recursive. It traverses the document tree, processing each node (section, subsection, etc.) one at a time. This naturally handles any depth of nesting and ensures that parent nodes can be processed before their children.
+
+\subsection{Hierarchical Context Building}
+This is a key innovation. For any given node it is processing (e.g., a subsection), the agent constructs a highly-contextual prompt for the LLM that includes:
+\begin{itemize}
+    \item \textbf{Global Context:} The abstract or summary of the entire document.
+    \item \textbf{Local Context:} The already-processed content of its direct parent node.
+    \item \textbf{Node Content:} The actual text of the current node to be refactored.
+\end{itemize}
+This hierarchical context allows the LLM to make much more informed and coherent edits than if it were just given the text in isolation.
+
+\subsection{Multi-Phase Processing for Generative Content}
+The agent works in two phases. First, it performs a "refactoring pass" on all nodes that have source content from the original document. Afterwards, it performs a "generative pass" for nodes that were flagged as \texttt{generative: True} in the template (e.g., "Summary", "Assumptions"). For these nodes, the \texttt{node\_content} sent to the LLM is the entire, already-processed main document, allowing the LLM to synthesize brand new content.
+
+\subsection{Future Enhancements}
+\begin{itemize}
+    \item \textbf{Strategy Registry:} The agent could be equipped with a registry of different processing strategies. It could then select a different prompt or even a different model based on the type of node being processed (e.g., use a creative model for introductions but a highly technical, precise model for equations).
+    \item \textbf{Fine-Tuning:} For a specific domain (e.g., legal documents), a base LLM could be fine-tuned on a corpus of high-quality documents to improve the quality and consistency of its refactoring output.
+\end{itemize}
+
+\section{Document Augmentation and Combination}
+When two source documents are provided, the \texttt{HierarchicalDocumentCombiner} is used to intelligently merge them. This process operates on the document trees, not flat text.
+
+\subsection{Structure Grafting}
+The combiner first identifies entire sections or subsections that exist in the augmentation document but not in the base document. It then uses an LLM as a "structural editor," prompting it to determine the most logical location within the base document's tree to "graft" or insert this new structural branch.
+
+\subsection{Content Weaving}
+For sections that exist in both documents, the combiner uses an LLM with a "technical editor" prompt. It provides both sets of content and instructs the LLM to seamlessly \textit{weave} the key points from the augmentation text into the original, rather than simply appending it. This results in a single, coherent, and improved narrative.
+
+\subsection{Future Enhancements}
+\begin{itemize}
+    \item \textbf{Conflict Resolution:} An advanced version could detect when the two documents make contradictory claims. It could then flag this conflict for human review or use an LLM with a "fact-checking" persona to try to resolve it.
+    \item \textbf{Automated Style Transfer:} The system could analyze the writing style (tone, formality, sentence complexity) of the base document and instruct the LLM to rewrite the augmented content to match that style, ensuring a seamless final product.
+\end{itemize}
+
+\section{LLM Output Sanitization and Format Enforcement}
+A critical challenge with using Large Language Models is that their output, while often semantically correct, may not be syntactically perfect for the target format (e.g., LaTeX). Raw LLM output can sometimes include conversational text, Markdown syntax, or other artifacts that would break the final document compilation. The \texttt{FormatEnforcer} module acts as a robust "Syntax Guardian" to solve this problem.
+
+\subsection{The Role of the FormatEnforcer}
+The \texttt{FormatEnforcer} is a self-contained utility class designed for a single purpose: to take a raw string of text from an LLM and clean it to conform to a strict set of formatting rules. It is not involved in the hierarchical logic of the pipeline; it is a tool used \textit{by} the pipeline at every processing step.
+
+\subsection{Integration into the Processing Loop}
+The \texttt{HierarchicalProcessingAgent} holds an instance of the \texttt{FormatEnforcer}. The integration point is immediately after every call to the \texttt{llm\_client}. The workflow for any given node is as follows:
+\begin{enumerate}
+    \item The agent constructs a highly-contextual prompt and sends it to the LLM.
+    \item The agent receives the raw, potentially "dirty" text string back from the LLM.
+    \item This raw string is immediately passed to the \texttt{format\_enforcer.enforce\_format()} method.
+    \item The \texttt{FormatEnforcer} performs a series of deterministic, regex-based cleaning operations (e.g., converting Markdown bold \texttt{**text**} to LaTeX bold \texttt{\textbackslash textbf\{text\}}).
+    \item The \textbf{clean, sanitized string} is what is then stored in the `processed_content` field of the node in the document tree.
+\end{enumerate}
+This ensures that the data stored in our document tree is always syntactically valid, preventing errors from propagating through the system and guaranteeing a clean final output.
+
+\subsection{Future Enhancements}
+\begin{itemize}
+    \item \textbf{LLM-Based Correction:} For very complex formatting errors that regex cannot fix, the enforcer could be upgraded to have a "fallback" mode. If it detects an unfixable error, it could make a second, highly-specific LLM call with a prompt like, "The following text contains invalid LaTeX. Please fix the syntax errors and return only the valid LaTeX."
+    \item \textbf{Custom Rule Sets:} The enforcer could be modified to load different sets of regex rules from a configuration file, allowing users to define custom cleaning logic for specialized document types (e.g., a rule to format chemical formulas for a chemistry paper).
+\end{itemize}
+
+\section{Conclusion}
+The described pipeline represents a robust and intelligent framework for document automation. By embracing a hierarchical, tree-based representation of documents and employing a multi-pass, hybrid approach of deterministic parsing, semantic analysis, and advanced LLM prompting, the system overcomes the limitations of traditional, flat-text processing. Its modular design ensures that each component is specialized for its task, from the format-aware chunker to the recursive output formatter, making the entire system both powerful and extensible.
+
+\end{document}
