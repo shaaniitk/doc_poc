@@ -14,6 +14,10 @@ from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 from .llm_client import UnifiedLLMClient
 from config import DOCUMENT_TEMPLATES, SEMANTIC_MAPPING_CONFIG, PROMPTS
+import logging
+import numpy as np
+import networkx as nx # <-- ADD THIS IMPORT
+from sentence_transformers import SentenceTransformer
 
 log = logging.getLogger(__name__)
 
@@ -39,27 +43,51 @@ class IntelligentMapper:
     def map_chunks(self, all_chunks_in_order, use_llm_pass=False):
         """Main entry point to run the full, multi-pass mapping pipeline."""
         
-        # --- Pass 1: High-Confidence Semantic Mapping ---
-        log.info("--- Mapper Pass 1: High-Confidence Semantic Mapping ---")
-        mapped_tree, pass1_orphans = self._run_semantic_pass(all_chunks_in_order)
-        log.info(f"  -> Pass 1 complete. Mapped: {len(all_chunks_in_order) - len(pass1_orphans)}. Orphans remaining: {len(pass1_orphans)}.")
+        # --- Pre-computation ---
+        # Build the reference graph and semantic embeddings once at the beginning.
+        reference_graph = self._build_reference_graph(all_chunks_in_order)
+        chunk_contents = [c['content'] for c in all_chunks_in_order]
+        chunk_embeddings = self.embedding_model.encode(chunk_contents, show_progress_bar=False)
+        similarity_matrix = cosine_similarity(chunk_embeddings, self.section_embeddings)
+        
+        # --- Pass 1: Graph-Boost Pass ---
+        # This is the new, powerful pass that uses structure to improve semantics.
+        boosted_similarity_matrix = self._run_graph_boost_pass(similarity_matrix, all_chunks_in_order, reference_graph)
 
-        # --- Pass 2: LLM-Powered Mapping ---
-        if pass1_orphans and use_llm_pass: # <-- Use the flag here
-            log.info("--- Mapper Pass 2: LLM-Powered Mapping for Ambiguous Chunks ---")
-            mapped_tree, pass2_orphans = self._run_llm_pass(mapped_tree, pass1_orphans)
-            log.info(f"  -> Pass 2 complete. Mapped: {len(pass1_orphans) - len(pass2_orphans)}. Orphans remaining: {len(pass2_orphans)}.")
-        elif pass1_orphans:
-            log.info("--- Mapper Pass 2: Skipped LLM-Powered Mapping (disabled by flag) ---")
-            pass2_orphans = pass1_orphans # Pass the orphans directly to the next stag
-            log.info(f"  -> Pass 2 complete. Mapped: {len(pass1_orphans) - len(pass2_orphans)}. Orphans remaining: {len(pass2_orphans)}.")
+        # --- Final Decision Making (replaces the old Pass 1) ---
+        log.info("--- Final Mapping Decision ---")
+        mapped_tree = self._create_empty_skeleton(self.skeleton)
+        unmapped_chunks = []
+        
+        best_match_indices = np.argmax(boosted_similarity_matrix, axis=1)
+        best_match_scores = np.max(boosted_similarity_matrix, axis=1)
+        threshold = self.config['similarity_threshold']
+
+        for i, chunk in enumerate(all_chunks_in_order):
+            best_path_index = best_match_indices[i]
+            score = best_match_scores[i]
+            chunk['metadata']['assignment_score'] = float(score)
+
+            if score >= threshold:
+                best_path = self.section_paths[best_path_index]
+                parent_node = mapped_tree
+                for part in best_path[:-1]:
+                    parent_node = parent_node[part]['subsections']
+                parent_node[best_path[-1]]['chunks'].append(chunk)
+            else:
+                unmapped_chunks.append(chunk)
+        
+        log.info(f"  -> Initial mapping complete. Mapped: {len(all_chunks_in_order) - len(unmapped_chunks)}. Unmapped: {len(unmapped_chunks)}.")
+
+        # --- Pass 2 & 3: Orphan Handling (LLM and Cohesion) ---
+        # These passes now run only on the truly unmapped chunks.
+        if unmapped_chunks and use_llm_pass:
+            mapped_tree, remaining_orphans = self._run_llm_pass(mapped_tree, unmapped_chunks)
         else:
-            pass2_orphans = []
+            remaining_orphans = unmapped_chunks
 
-        # --- Pass 3: Contextual Cohesion ---
-        if pass2_orphans:
-            log.info("--- Mapper Pass 3: Contextual Cohesion for Final Orphans ---")
-            mapped_tree, final_orphans = self._run_cohesion_pass(mapped_tree, pass2_orphans, all_chunks_in_order)
+        if remaining_orphans:
+            mapped_tree, final_orphans = self._run_cohesion_pass(mapped_tree, remaining_orphans, all_chunks_in_order)
             if final_orphans:
                 mapped_tree['Orphaned_Content'] = final_orphans
         
@@ -143,18 +171,17 @@ class IntelligentMapper:
     # --- PASS 3: COHESION ---
     def _run_cohesion_pass(self, mapped_tree, orphans, all_chunks_in_order):
         """
-        A deterministic pass to "rescue" orphans by checking their neighbors.
-        This version uses a two-stage approach for robustness:
-        1. Analyze and create a list of "rescue missions".
-        2. Execute the rescue missions by modifying the tree.
+        Rescues orphans using two deterministic methods:
+        1. Neighbor Cohesion: Checks if the preceding and succeeding chunks went to the same place.
+        2. Graph Cohesion: Checks if an orphan references a chunk that was confidently mapped.
         """
         log.info("--- Running Orphan Cohesion Pass ---")
         if not orphans:
             return mapped_tree, []
 
-        # --- Stage 1: Analysis and Mission Planning ---
+        # --- Build the necessary data structures ---
+        reference_graph = self._build_reference_graph(all_chunks_in_order)
         
-        # Create a quick lookup map of chunk_id -> its final mapped path
         chunk_id_to_path_map = {}
         def build_path_map(node_level, path):
             for title, node_data in node_level.items():
@@ -167,8 +194,10 @@ class IntelligentMapper:
                     build_path_map(node_data['subsections'], current_path)
         build_path_map(mapped_tree, [])
 
+        # --- Analyze and plan rescue missions ---
         rescue_missions = []
         remaining_orphans = []
+        rescued_ids = set()
 
         for orphan in orphans:
             orphan_id = orphan.get('chunk_id')
@@ -176,53 +205,127 @@ class IntelligentMapper:
                 remaining_orphans.append(orphan)
                 continue
 
+            # Method 1: Neighbor Cohesion
             prev_chunk_path = chunk_id_to_path_map.get(orphan_id - 1)
             next_chunk_path = chunk_id_to_path_map.get(orphan_id + 1)
-
-            # The cohesion rule: if the chunk before and after went to the same place...
             if prev_chunk_path and prev_chunk_path == next_chunk_path:
-                # Plan the mission instead of acting immediately
                 mission = {'orphan': orphan, 'target_path': prev_chunk_path, 'neighbor_id': orphan_id - 1}
                 rescue_missions.append(mission)
-            else:
-                remaining_orphans.append(orphan)
+                rescued_ids.add(orphan_id)
+                log.info(f"  -> Planning rescue for orphan {orphan_id} via Neighbor Cohesion.")
+                continue
+
+            # Method 2: Graph Cohesion
+            if reference_graph.has_node(orphan_id):
+                # Find chunks that this orphan references
+                for _, target_id in reference_graph.out_edges(orphan_id):
+                    target_path = chunk_id_to_path_map.get(target_id)
+                    # If the referenced chunk was confidently mapped...
+                    if target_path:
+                        # ...rescue the orphan to the same location.
+                        mission = {'orphan': orphan, 'target_path': target_path, 'neighbor_id': None}
+                        rescue_missions.append(mission)
+                        rescued_ids.add(orphan_id)
+                        log.info(f"  -> Planning rescue for orphan {orphan_id} via Graph Cohesion (references chunk {target_id}).")
+                        break # One successful rescue is enough for this orphan
         
+        # Filter out the orphans that have been rescued
+        remaining_orphans.extend([o for o in orphans if o.get('chunk_id') not in rescued_ids])
+
         log.info(f"  -> Cohesion Pass Analysis complete. Planned {len(rescue_missions)} rescue mission(s).")
 
-        # --- Stage 2: Mission Execution ---
-
+        # --- Execute rescue missions ---
         for mission in rescue_missions:
-            orphan_to_rescue = mission['orphan']
-            target_path = mission['target_path']
-            neighbor_id = mission['neighbor_id']
-            
             try:
-                # This is the robust navigation logic that correctly finds the parent
+                # ... (The mission execution logic is the same as before, no changes here) ...
                 target_parent = mapped_tree
-                for part in target_path[:-1]:
+                for part in mission['target_path'][:-1]:
                     target_parent = target_parent[part]['subsections']
+                target_node = target_parent[mission['target_path'][-1]]
                 
-                target_node = target_parent[target_path[-1]]
-                
-                # Find the index of the neighbor to insert after
-                neighbor_index = -1
-                for i, chunk in enumerate(target_node['chunks']):
-                    if chunk.get('chunk_id') == neighbor_id:
-                        neighbor_index = i
-                        break
-                
-                if neighbor_index != -1:
-                    target_node['chunks'].insert(neighbor_index + 1, orphan_to_rescue)
-                    log.info(f"  -> Rescued orphan chunk {orphan_to_rescue.get('chunk_id')} to {' -> '.join(target_path)}")
+                if mission['neighbor_id'] is not None:
+                    # Insert after neighbor if possible
+                    neighbor_index = next((i for i, c in enumerate(target_node['chunks']) if c.get('chunk_id') == mission['neighbor_id']), -1)
+                    if neighbor_index != -1:
+                        target_node['chunks'].insert(neighbor_index + 1, mission['orphan'])
+                    else:
+                        target_node['chunks'].append(mission['orphan'])
                 else:
-                    # Fallback if neighbor not found (should be rare)
-                    target_node['chunks'].append(orphan_to_rescue)
-
+                    # If rescued by graph, just append
+                    target_node['chunks'].append(mission['orphan'])
             except Exception as e:
-                log.error(f"  -> Mission failed for chunk {orphan_to_rescue.get('chunk_id')}: {e}")
-                remaining_orphans.append(orphan_to_rescue)
-
+                log.error(f"  -> Mission failed for chunk {mission['orphan'].get('chunk_id')}: {e}")
+                remaining_orphans.append(mission['orphan'])
+        
         return mapped_tree, remaining_orphans
+
+    def _run_graph_boost_pass(self, similarity_matrix, all_chunks_in_order, reference_graph):
+        """
+        Adjusts the semantic similarity matrix by "boosting" the scores of
+        chunks that have explicit references to other confidently placed chunks.
+        """
+        log.info("--- Mapper Pass 2: Graph-Based Confidence Boosting ---")
+        
+        # A "confident" mapping is one with a high initial score.
+        CONFIDENCE_THRESHOLD = self.config['similarity_threshold'] + 0.3 # e.g., 0.6
+        BOOST_AMOUNT = 0.5 # A significant boost
+
+        # Find the initial, high-confidence placements
+        best_match_indices = np.argmax(similarity_matrix, axis=1)
+        best_match_scores = np.max(similarity_matrix, axis=1)
+
+        confident_placements = {
+            chunk_id: best_match_indices[i] 
+            for i, chunk_id in enumerate(c.get('chunk_id') for c in all_chunks_in_order)
+            if best_match_scores[i] >= CONFIDENCE_THRESHOLD
+        }
+
+        # Now, iterate through the graph edges to apply boosts
+        for source_id, target_id in reference_graph.edges():
+            # If the chunk we are referencing (target) has a confident placement...
+            if target_id in confident_placements:
+                target_section_index = confident_placements[target_id]
+                
+                # ...then significantly boost the score of the referencing chunk (source)
+                # with respect to that same section.
+                source_chunk_index = source_id # Since chunk_id is the index
+                
+                # Boost the score in the main matrix
+                original_score = similarity_matrix[source_chunk_index, target_section_index]
+                boosted_score = min(1.0, original_score + BOOST_AMOUNT) # Cap at 1.0
+                similarity_matrix[source_chunk_index, target_section_index] = boosted_score
+
+        return similarity_matrix
+
+    def _build_reference_graph(self, all_chunks_in_order):
+        """
+        Builds a directed graph of the document's internal references.
+        An edge from chunk A to chunk B means A contains a `\ref` to a `\label` in B.
+        """
+        log.info("  -> Building document reference graph...")
+        G = nx.DiGraph()
+        label_to_chunk_id = {}
+
+        # First pass: build the graph nodes and find all labels
+        for chunk in all_chunks_in_order:
+            chunk_id = chunk.get('chunk_id')
+            if chunk_id is None: continue
+            G.add_node(chunk_id)
+            for label in chunk.get('metadata', {}).get('labels', []):
+                label_to_chunk_id[label] = chunk_id
+        
+        # Second pass: add edges based on references
+        for chunk in all_chunks_in_order:
+            chunk_id = chunk.get('chunk_id')
+            if chunk_id is None: continue
+            for ref in chunk.get('metadata', {}).get('refs', []):
+                target_chunk_id = label_to_chunk_id.get(ref)
+                if target_chunk_id and G.has_node(target_chunk_id):
+                    # Add an edge from the referencing chunk to the labeled chunk
+                    G.add_edge(chunk_id, target_chunk_id)
+        
+        log.info(f"  -> Reference graph built with {G.number_of_nodes()} nodes and {G.number_of_edges()} edges.")
+        return G
 
     # --- Helper Methods ---
     def _create_empty_skeleton(self, node_level):
