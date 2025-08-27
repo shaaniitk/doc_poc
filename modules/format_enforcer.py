@@ -15,28 +15,10 @@ class FormatEnforcer:
     def __init__(self, output_format="latex"):
         self.output_format = output_format
         
-        # --- Architectural Decision: Configuration vs. Logic ---
-        # The regex patterns and replacement rules below are treated as 'logic',
-        # not 'configuration'. While they could be moved to the config file,
-        # keeping them here offers significant advantages:
-        #
-        # 1.  **Maintainability:** The regex pattern and its corresponding action
-        #     (a replacement string or validation message) are a tightly coupled
-        #     pair. Keeping them together in code makes the transformation logic
-        #     self-contained and easier to understand and debug.
-        # 2.  **Separation of Concerns:** Prompts (in config.py) are user-facing
-        #     'configuration' that defines *what* the LLM should do. These patterns
-        #     are 'logic' that defines *how* our program sanitizes output. This
-        #     separation respects the distinct roles of a prompt engineer (editing
-        #     config) and a developer (editing code).
-        # 3.  **Robustness:** Regex patterns are a form of code. Modifying them
-        #     can have significant behavioral impacts. Keeping them within the
-        #     Python file ensures they are version-controlled and reviewed as
-        #     part of the core application logic.
-        # ---------------------------------------------------------------------
         self.format_rules = {
             "latex": {
                 "validation_patterns": [
+                    (r"\\textbf\{([\s\S]*?)\}", r"\1"),
                     (r"^#{1,6}\s", "INVALID: Use \\section{} not ###"),
                     (r"\*\*([^*]+)\*\*", "INVALID: Use \\textbf{} not **text**"),
                     (r"\*([^*]+)\*", "INVALID: Use \\textit{} not *text*"),

@@ -1,5 +1,12 @@
 """Configuration file for document processing"""
 
+# --- NEW: Configuration for LangChain-based Chunkers ---
+LANGCHAIN_CHUNK_CONFIG = {
+    'md_chunk_size': 1500,
+    'md_chunk_overlap': 150,
+}
+
+
 # LLM Configuration
 LLM_CONFIG = {
     "provider": "mistral",  # Options: "mistral", "openai", "huggingface", "gemini", "vertexai"
@@ -291,29 +298,29 @@ Example Response: "ROOT"
 
 **Parent Path:**
 """,
- "hierarchical_refactor": """
-You are a world-class technical editor and LaTeX expert. Your task is to refactor the following content from a document.
+ 'hierarchical_refactor': """
+    You are a professional technical editor refactoring a document section by section.
+    
+    You have already processed some sections. Here is a summary of the most relevant section you have already written, to ensure consistency:
+    MEMORY OF PREVIOUSLY WRITTEN CONTENT:
+    ---
+    {memory_context}
+    ---
 
-**Document Context:**
-This content is from the section/subsection titled: "{node_path}".
-The abstract or summary of the entire document is:
-{global_context}
+    To improve coherence, consider these semantically related excerpts from other parts of the document:
+    RELATED CONTEXT:
+    ---
+    {semantic_context}
+    ---
+    
+    GLOBAL DOCUMENT CONTEXT: {global_context}
+    PARENT SECTION CONTEXT: {parent_context}
 
-**Parent Section Context:**
-The content of the parent section is:
-{parent_context}
-
-**Content to Refactor:**
-{node_content}
-
-**Instructions:**
-1.  Rewrite the provided "Content to Refactor" for maximum clarity, conciseness, and professional academic tone.
-2.  Ensure your output is ONLY the refactored content. Do not include titles or sectioning commands.
-3.  **Crucially, you must preserve all original LaTeX commands, environments (like `equation`, `figure`), citations (`\cite`), and references (`\ref`) exactly as they appear.**
-4.  Maintain all the original technical details and semantic meaning.
-5.  Improve the logical flow and transition between ideas.
-
-**Refactored LaTeX Content:**
+    CURRENT CONTENT TO REFACTOR (for section '{node_path}'):
+    ---
+    {node_content}
+    ---
+    Your task is to rewrite the CURRENT CONTENT to be clear, professional, and stylistically consistent with your MEMORY and the other contexts provided. Adhere strictly to the specified output format.
 """,
 
     # NEW PROMPT for the self-critique pass
@@ -434,7 +441,8 @@ You are a document structuring expert. Your task is to determine the single best
 """,
 
  "hierarchical_refactor": """
-You are a world-class technical editor and LaTeX expert. Your task is to refactor the following content from a document.
+...
+Your task is to rewrite the CURRENT CONTENT to be clear, professional, and stylistically consistent with your MEMORY and the other contexts provided. Adhere strictly to the specified output format. **Important: Do NOT wrap entire paragraphs in formatting commands like \\textbf{...}.**
 
 **Document Context:**
 This content is from the section/subsection titled: "{node_path}".
@@ -456,36 +464,23 @@ The content of the parent section is:
 5.  Improve the logical flow and transition between ideas.
 
 **Refactored LaTeX Content:**
-""" 
+""" ,
+
+ 'semantic_split_paragraph': """
+ You are an expert in document analysis. Your task is to split the following text into semantically coherent paragraphs.
+ Do not lose any information. The output must be a list of strings in the specified JSON format.
+
+ {format_instructions}
+
+ TEXT TO SPLIT:
+ ---
+ {text_content}
+ ---
+ """
 
 }
 
-OUTPUT_FORMATS = {
-    "latex": {
-        "extension": ".tex",
-        "header": """\\documentclass{article}
-                    \\usepackage[utf8]{inputenc}
-                    \\usepackage{amsmath}
-                    \\usepackage{graphicx}
-                    \\usepackage{hyperref}
-                    \\title{Refactored Document}
-                    \\author{Automated System}
-                    \\date{\\today}
-                    \\begin{document}
-                    \\maketitle""",
-                    "footer": "\\end{document}"
-    },
-    "markdown": {
-        "extension": ".md",
-        "header": "",
-        "footer": ""
-    },
-    "json": {
-        "extension": ".json",
-        "header": "",
-        "footer": ""
-    }
-}
+
 
 # --- System Prompts for FormatEnforcer ---
 # These are specialized system prompts used to guide the LLM's output syntax.

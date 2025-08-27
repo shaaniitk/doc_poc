@@ -1,0 +1,20 @@
+{% macro render_nodes(node_level, level) %}
+{% for title, data in node_level.items() %}
+{{ '#' * level }} {{ title }}
+
+{{ data.get('processed_content', '') }}
+
+{% if data.get('subsections') %}
+{{ render_nodes(data.subsections, level + 1) }}
+{% endif %}
+{% endfor %}
+{% endmacro %}
+
+{{ render_nodes(processed_tree, 1) }}
+
+{% if orphaned_content %}
+# Uncategorized Content
+{% for chunk in orphaned_content %}
+{{ chunk.content }}
+{% endfor %}
+{% endif %}```
