@@ -87,75 +87,74 @@ DOCUMENT_TEMPLATES = {
         {"section": "13. Conclusion", "prompt": "Format as LaTeX with section title 'Conclusion'. Preserve all technical content exactly.", "description": "The concluding section summarizing the benefits of the proposed electronic cash system, such as eliminating the need for trust and protecting sellers."}
     ],
      "bitcoin_paper_hierarchical": {
-        "Summary": {
-            "generative": True, # <-- ADD THIS FLAG
-            "prompt": "You are a technical writer. Based on the entire document's content, write a new, high-level summary. It should be a 3-4 paragraph executive summary that explains the core problem, the proposed solution (peer-to-peer network, proof-of-work, digital signatures), and the key benefits (trustless, low transaction costs, fraud protection) in clear, accessible language.",
-            "description": "A high-level executive summary of the entire document. This section should synthesize the key features, problems, and solutions described throughout the paper into an easy-to-understand overview.",
-            "chunks": [],
-            "subsections": {}
-        },
-        "Abstract": {
-            "generative": True,
-            "prompt": "You are a LaTeX expert. Refactor the following content into a formal, concise abstract...",
-            "description": "A concise, formal summary of the paper's main points...",
-            "chunks": [],
-            "subsections": {}
-        },
-        "1. Introduction": {
+       "Abstract": { 
+                    "prompt": """
+                        You are a technical summarizer. Based on the full document text provided, write a concise, professional summary.
+
+                        **RULES:**
+                        1.  Your output MUST be ONLY the summary text itself.
+                        2.  Do NOT include any LaTeX preamble, \\documentclass, \\begin{{document}}, \\maketitle, or section commands.
+                        3.  Write only the content for the summary.
+                    """,
+                    "description": "The main summary of the paper, outlining the core problem and solution.",
+                    "generative": True,
+                    "subsections": {}
+                },
+        "Introduction": {
             "prompt": "You are a LaTeX expert. Refactor the following introductory content for clarity and logical flow...",
-            "description": "The introductory section explaining the background of commerce on the Internet...",
+            "description": "This is the instroductory section of the document which introduces the main concepts of bitcoin and its background and should streamlessly create a background for the document and movement to the next section.",
             "chunks": [],
             "subsections": {}
         },
-        "2. Transactions": {
+        "Transactions": {
             "prompt": "You are a LaTeX expert. Refactor the following content to precisely define an electronic coin...",
             "description": "This section details the fundamental definition of an electronic coin as a chain of digital signatures...",
             "chunks": [],
             "subsections": {}
         },
-        "3. Timestamp Server": {
+        "Timestamp Server": {
             "prompt": "You are a LaTeX expert. Refactor the following content to clearly explain the concept of a distributed timestamp server...",
             "description": "Explains the proposed solution to the double-spending problem by using a distributed timestamp server...",
             "chunks": [],
             "subsections": {}
         },
-        "4. Proof-of-Work": {
+        "Proof-of-Work": {
             "prompt": "You are a LaTeX expert. Refactor the following content to explain how proof-of-work is used...",
             "description": "Describes the implementation of the distributed timestamp server using a proof-of-work system...",
             "chunks": [],
             "subsections": {}
         },
-        "5. Network": {
+        "Network": {
             "prompt": "You are a LaTeX expert. Refactor the following steps describing the network's operation...",
             "description": "Outlines the step-by-step process for running the peer-to-peer network...",
             "chunks": [],
             "subsections": {}
         },
-        "6. Incentive": {
+        "Incentive": {
             "prompt": "You are a LaTeX expert. Refactor the following content to clearly explain the economic incentives...",
             "description": "Details the incentive system for nodes participating in the network...",
             "chunks": [],
             "subsections": {}
         },
-        "7. Reclaiming Disk Space": {
+        "Reclaiming Disk Space": {
             "prompt": "You are a LaTeX expert. Refactor the following content to explain the method for reclaiming disk space...",
             "description": "Discusses a method for pruning the blockchain to save disk space...",
             "chunks": [],
             "subsections": {}
         },
-        "8. Simplified Payment Verification": {
+        "Simplified Payment Verification": {
             "prompt": "You are a LaTeX expert. Refactor the following content to explain the Simplified Payment Verification (SPV) method...",
             "description": "Explains how payment verification can be achieved without running a full network node...",
             "chunks": [],
             "subsections": {}
         },
-        "9. Combining and Splitting Value": {
+        "Combining and Splitting Value": {
             "prompt": "You are a LaTeX expert. Refactor the following content to clearly explain the practical mechanics of transactions...",
             "description": "Describes the practical functionality of how transactions can handle value...",
             "chunks": [],
             "subsections": {}
         },
-        "10. Security Analysis": {
+        "Security Analysis": {
             "prompt": "You are a security expert and LaTeX professional. Refactor the following content to provide an overview of the system's security...",
             "description": "An overarching section that covers the security properties of the system...",
             "chunks": [],
@@ -364,43 +363,37 @@ You are a domain expert analyzing a technical document. Your task is to extract 
 **Key Technical Terms:**
 """,
 
-    # NEW PROMPT for standardizing terminology within a piece of text
-    "term_standardization": """
-You are a meticulous copy editor. Your task is to ensure consistent terminology in the following text, based on a predefined list of key terms.
+'term_standardization': """
+    You are a silent text processor. Your ONLY job is to rewrite the following text to use the provided key terms consistently.
 
-**Official Key Terms:**
-{key_terms_list}
+    **Key Terms List:**
+    {key_terms_list}
 
-**Text to Standardize:**
-{text_content}
+    **Text to Standardize:**
+    ---
+    {text_content}
+    ---
 
-**Instructions:**
-- Review the "Text to Standardize" and identify any variations or synonyms for the "Official Key Terms".
-- Rewrite the text to use the official terms consistently.
-- For example, if "proof of work" is an official term, change instances of "work-proof" or "PoW system" to match.
-- Preserve the original meaning, tone, and all LaTeX commands.
-- Respond with ONLY the standardized text.
+    **RULES:**
+    1.  Your output MUST be ONLY the modified text.
+    2.  Do NOT add any explanation, preamble, or conversational filler like "Here is the standardized text...".
+    3.  Do NOT wrap the output in markdown code blocks or any other formatting.
 
-**Standardized Text:**
+    **Standardized Text:**
 """,
 
-    # NEW PROMPT for generating a transition sentence between sections
-    "section_transition": """
-You are a technical writer creating a smooth narrative flow in a document. Your task is to write a single, concise transition sentence that connects the end of a preceding section with the beginning of the current section.
+'section_transition': """
+    You are a silent transition writer. Your ONLY job is to write a single, concise transition sentence in plain text.
 
-**End of Preceding Section ('{prev_section_title}'):**
-...{prev_section_ending}
+    **Previous Section Ending:** "...{prev_section_ending}"
+    **Next Section Beginning:** "{current_section_beginning}..."
 
-**Beginning of Current Section ('{current_section_title}'):**
-{current_section_beginning}...
+    **RULES:**
+    1.  Your output MUST be ONLY the single transition sentence.
+    2.  Do NOT add any explanation, preamble, or conversational filler like "Here is the transition sentence...".
+    3.  Do NOT wrap the sentence in LaTeX commands or markdown code blocks.
 
-**Instructions:**
-- Write one sentence that logically links the two sections.
-- The sentence should act as a bridge, making the shift in topic feel natural.
-- Do not summarize the sections. Just connect them.
-- The output should be the transition sentence itself, formatted as a LaTeX paragraph.
-
-**Transition Sentence:**
+    **Transition Sentence:**
 """,
 
 "semantic_split_paragraph": """
@@ -440,31 +433,45 @@ You are a document structuring expert. Your task is to determine the single best
 **Best Fit Section Path:**
 """,
 
- "hierarchical_refactor": """
-...
-Your task is to rewrite the CURRENT CONTENT to be clear, professional, and stylistically consistent with your MEMORY and the other contexts provided. Adhere strictly to the specified output format. **Important: Do NOT wrap entire paragraphs in formatting commands like \\textbf{...}.**
+'hierarchical_refactor': """
+You are a professional technical editor specializing in academic papers. Your task is to refactor a piece of LaTeX content. Your output MUST BE only the refactored, valid LaTeX content.
 
-**Document Context:**
-This content is from the section/subsection titled: "{node_path}".
-The abstract or summary of the entire document is:
-{global_context}
+**-- CONTEXTUAL INFORMATION --**
 
-**Parent Section Context:**
-The content of the parent section is:
-{parent_context}
+1.  **YOUR MEMORY (Previously Written Content):** To ensure consistency, here is the most relevant content you have already written for a previous section. Match its style and terminology.
+    ---
+    {memory_context}
+    ---
+
+2.  **SEMANTIC CONTEXT (Related Document Excerpts):** Here are other parts of the document that are thematically related to the current task. Use them to improve coherence.
+    ---
+    {semantic_context}
+    ---
+
+3.  **HIERARCHICAL CONTEXT:**
+    -   **Full Document Abstract:** {global_context}
+    -   **Parent Section Content:** {parent_context}
+
+**-- YOUR TASK --**
+
+You are currently working on the section: **"{node_path}"**.
 
 **Content to Refactor:**
+```latex
 {node_content}
 
-**Instructions:**
-1.  Rewrite the provided "Content to Refactor" for maximum clarity, conciseness, and professional academic tone.
-2.  Ensure your output is ONLY the refactored content. Do not include titles or sectioning commands.
-3.  **Crucially, you must preserve all original LaTeX commands, environments (like `equation`, `figure`), citations (`\cite`), and references (`\ref`) exactly as they appear.**
-4.  Maintain all the original technical details and semantic meaning.
-5.  Improve the logical flow and transition between ideas.
+  
+-- INSTRUCTIONS & RULES --
 
-**Refactored LaTeX Content:**
-""" ,
+1. Rewrite the "Content to Refactor" for maximum clarity, conciseness, and a professional academic tone.
+2.  Preserve Core Elements: You MUST preserve all original LaTeX commands, environments (e.g., \\begin{{equation}}...\\end{{equation}}), citations (\\cite{{...}}), and references (\\ref{{...}}) exactly as they appear.
+3.  Maintain Meaning: Do NOT alter the original technical details or semantic meaning.
+4.  Formatting Rule: Do NOT wrap entire paragraphs or multi-line content in formatting commands (e.g., \\textbf{{...}}). Apply formatting only to specific words or short phrases.
+5.  Do NOT add or remove any LaTeX commands, environments, citations, or references.
+6.  Output:Your response must contain ONLY the refactored LaTeX content for the section. Do not include section headers (\\section{{...}}) or any other text outside of the rewritten content itself.
+
+Refactored LaTeX Content:
+""",
 
  'semantic_split_paragraph': """
  You are an expert in document analysis. Your task is to split the following text into semantically coherent paragraphs.

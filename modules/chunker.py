@@ -7,13 +7,14 @@ from .llm_client import UnifiedLLMClient, LangChainLLM
 from .error_handler import ChunkingError
 from config import LLM_CHUNK_CONFIG, PROMPTS,LANGCHAIN_CHUNK_CONFIG
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.output_parsers.pydantic import PydanticOutputParser
+from pydantic import BaseModel, Field
+from langchain_core.output_parsers import PydanticOutputParser
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
-from langchain_core.pydantic_v1 import BaseModel, Field
 from typing import List
 from docx import Document
 from docx.document import Document as DocxDocument
+from pylatexenc.latexwalker import latex_group_delimiters
 import logging
 # Configure logging 
 log = logging.getLogger(__name__)
@@ -104,7 +105,7 @@ class ASTChunker:
         
         # Use a standard LaTeX specification database for parsing
         default_latex_db = LatexContextDb()
-        self.lw = LatexWalker(self.full_content, latex_context=default_latex_db)
+        self.lw = LatexWalker(self.full_content, latex_context=default_latex_db,comment_delimiters=[('%', '\n')])
         
         self.nodelist, _, _ = self.lw.get_latex_nodes()
         self.chunks = []
@@ -294,11 +295,12 @@ def extract_document_sections(content, source_path):
         log.info("-> Applying LLM-enhanced semantic splitting for long paragraphs...")
         processed_chunks = []
         llm_client = UnifiedLLMClient()
+        langchain_llm = LangChainLLM(client=llm_client)
         for chunk in initial_chunks:
             if (chunk['type'] == 'paragraph' and 
                 len(chunk['content']) > LLM_CHUNK_CONFIG['SEMANTIC_SPLIT_THRESHOLD']):
                 log.info(f"    -> Splitting a long paragraph from section '{chunk['parent_section']}'...")
-                sub_chunks_content = _llm_semantic_split_langchain(chunk['content'], llm_client)
+                sub_chunks_content = _llm_semantic_split_langchain(chunk['content'], langchain_llm)
                 for sub_content in sub_chunks_content:
                     new_chunk = chunk.copy()
                     new_chunk['content'] = sub_content
@@ -338,15 +340,16 @@ def _llm_semantic_split_langchain(content: str, llm: LangChainLLM) -> List[str]:
             partial_variables={"format_instructions": parser.get_format_instructions()}
         )
 
-        # 3. Create the chain
-        chain = LLMChain(llm=llm, prompt=prompt_template)
+       # 3. Create the chain using the modern LCEL pipe syntax.
+        #    This pipes the output of the prompt to the model, and the model's output to the parser.
+        chain = prompt_template | llm | parser
 
-        # 4. Run the chain
-        response = chain.run(text_content=content)
-        parsed_response = parser.parse(response)
+        # 4. Invoke the chain. The input is a dictionary matching the prompt's input_variables.
+        parsed_response = chain.invoke({"text_content": content})
         
-        # 5. Return the list of chunks from the parsed object
-        return [c for c in parsed_response.chunks if c] # Return non-empty chunks
+        # 5. The result is now a Pydantic object directly, no need for a separate parse step.
+        return [c for c in parsed_response.chunks if c]
+
 
     except Exception as e:
         log.warning(f"LangChain semantic split failed. Returning original chunk. Error: {e}")

@@ -16,6 +16,7 @@ import sys
 import os
 import argparse
 import logging
+import re
 
 # --- Import all state-of-the-art modules ---
 from modules.file_loader import load_file_content
@@ -29,6 +30,7 @@ from modules.intelligent_aggregation import DocumentPolisher
 from modules.output_formatter import HierarchicalOutputFormatter
 from modules.output_manager import OutputManager
 from config import DOCUMENT_TEMPLATES
+from modules.output_manager import final_latex_sanitization
 
 # --- Configure Basic Logging ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -140,6 +142,11 @@ def main(source, source2=None, combine_strategy="smart", output_format="latex",
         output_manager.save_processed_tree_nodes(final_tree)
         formatter = HierarchicalOutputFormatter(output_format)
         final_document_string = formatter.format_document(final_tree)
+
+        if output_format == "latex":
+            log.info("-> Running final sanitization pass on LaTeX output...")
+            final_document_string = final_latex_sanitization(final_document_string)
+
         final_path = output_manager.aggregate_document(final_document_string, output_format)
         log.info("--- Document Processing Successful! ---")
         log.info(f"-> Final Document: {final_path}")
