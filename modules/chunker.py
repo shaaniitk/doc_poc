@@ -1,7 +1,7 @@
 
 import os
 import re
-from pylatexenc.latexwalker import LatexWalker, LatexCharsNode, LatexMacroNode, LatexEnvironmentNode
+#from pylatexenc.latexwalker import LatexWalker, LatexCharsNode, LatexMacroNode, LatexEnvironmentNode
 from pylatexenc.macrospec import LatexContextDb
 from .llm_client import UnifiedLLMClient, LangChainLLM
 from .error_handler import ChunkingError
@@ -14,8 +14,11 @@ from langchain.chains import LLMChain
 from typing import List
 from docx import Document
 from docx.document import Document as DocxDocument
-from pylatexenc.latexwalker import latex_group_delimiters
+from pylatexenc.macrospec import SpecialsSpec
 import logging
+from pylatexenc.latexwalker import LatexWalker, LatexCharsNode, LatexMacroNode, LatexEnvironmentNode, LatexCommentNode # <-- Add LatexCommentNode
+from pylatexenc.macrospec import LatexContextDb
+#from pylatexenc.parsers import LatexVerbatimParser
 # Configure logging 
 log = logging.getLogger(__name__)
 
@@ -94,212 +97,200 @@ class LangChainMarkdownChunker:
             })
         return chunks
 
-# --- Main AST-based Chunking Logic ---
 class ASTChunker:
     """
-    Parses a LaTeX document into an AST and extracts structured, metadata-rich chunks.
+    A state-of-the-art, robust chunker that leverages the pylatexenc AST.
+    It cleanly separates the document preamble from the body and then recursively
+    walks the body's structure to create chunks with precise contextual information.
     """
     def __init__(self, latex_content, source_directory=None):
         self.source_directory = source_directory or os.getcwd()
         self.full_content = self._resolve_inputs(latex_content, self.source_directory)
         
-        # Use a standard LaTeX specification database for parsing
-        default_latex_db = LatexContextDb()
-        self.lw = LatexWalker(self.full_content, latex_context=default_latex_db,comment_delimiters=[('%', '\n')])
+        db = LatexContextDb()
+        db.add_context_category(
+                        'comments',
+                        specials=[
+                            SpecialsSpec('%'),  # Recognize % as a special character
+                        ]
+                    )
         
+        self.lw = LatexWalker(self.full_content, latex_context=db)
         self.nodelist, _, _ = self.lw.get_latex_nodes()
-        self.chunks = []
-        self.current_section_hierarchy = []
+        
+    def chunk(self):
+        """
+        Public entry point. Separates preamble from body, then chunks the body.
+        Returns both content chunks and the preserved preamble string.
+        """
+        preamble_nodes = []
+        body_nodelist = []
 
-    def chunk_document(self):
-        """
-        (DEPRECATED) The main logic is now in the top-level 'extract_latex_sections'
-        function to support the hybrid parsing strategy. This method is kept
-        for potential direct instantiation if ever needed.
-        """
-        self._parse_node_list_into_chunks(self.nodelist)
-        return self.chunks
+        # Find the document environment node in the top-level AST
+        doc_env_node = None
+        for node in self.nodelist:
+            if node.isNodeType(LatexEnvironmentNode) and node.environmentname == 'document':
+                doc_env_node = node
+                break
+            else:
+                preamble_nodes.append(node)
+        
+        # Preserve the preamble as a verbatim string
+        preserved_preamble = ''.join([n.latex_verbatim() for n in preamble_nodes]).strip()
+
+        # If a document environment was found, get its content
+        if doc_env_node:
+            body_nodelist = doc_env_node.nodelist
+        else:
+            # If no \begin{document}, treat everything after preamble as body
+            # This handles standalone content files
+            start_index = len(preamble_nodes)
+            body_nodelist = self.nodelist[start_index:]
+            log.warning("No \\begin{document} environment found. Chunking all content after the preamble.")
+
+        # Start the recursive chunking on ONLY the body nodes
+        content_chunks = self._recursive_chunk_parser(body_nodelist, current_hierarchy=[])
+        
+        return content_chunks, preserved_preamble
+
+    def _recursive_chunk_parser(self, nodelist, current_hierarchy):
+
+        chunks = []
+        buffer = []
+
+        for node in nodelist:
+            if node.isNodeType(LatexEnvironmentNode):
+                chunks.extend(self._process_buffer(buffer, current_hierarchy))
+                buffer = []
+                chunks.append(self._create_environment_chunk(node, current_hierarchy))
+                continue
+
+            is_section_command = (
+                node.isNodeType(LatexMacroNode) and
+                node.macroname in ['section', 'subsection', 'subsubsection', 'paragraph']
+            )
+            if is_section_command:
+                chunks.extend(self._process_buffer(buffer, current_hierarchy))
+                buffer = []
+                level = {'section': 1, 'subsection': 2, 'subsubsection': 3, 'paragraph': 4}[node.macroname]
+                section_title = self._get_node_text(node.nodeargs[0]).strip() if node.nodeargs else f"Untitled {node.macroname}"
+                current_hierarchy = current_hierarchy[:level - 1] + [section_title]
+                continue
+
+            if not node.isNodeType(LatexCommentNode):
+                buffer.append(node)
+
+        chunks.extend(self._process_buffer(buffer, current_hierarchy))
+        return chunks
+
+    def _process_buffer(self, buffer, hierarchy):
+        if not buffer: return []
+        content = ''.join([n.latex_verbatim() for n in buffer]).strip()
+        if not content: return []
+        parent_section_str = ' -> '.join(hierarchy) if hierarchy else 'Preamble'
+        chunk_data = {
+            'type': 'paragraph', 'content': content, 'parent_section': parent_section_str,
+            'metadata': { 'hierarchy_path': hierarchy.copy() if hierarchy else ['Preamble'], **self._extract_metadata(buffer) }
+        }
+        return [chunk_data]
+
+    def _create_environment_chunk(self, node, hierarchy):
+        parent_section_str = ' -> '.join(hierarchy) if hierarchy else 'Preamble'
+        return {
+            'type': node.environmentname, 'content': node.latex_verbatim(), 'parent_section': parent_section_str,
+            'metadata': { 'hierarchy_path': hierarchy.copy(), 'caption': self._find_caption(node.nodelist or []), **self._extract_metadata(node.nodelist or []) }
+        }
 
     def _resolve_inputs(self, content, base_dir):
-        """
-        Recursively resolves `\input` and `\include` statements in the LaTeX source.
-        """
         input_pattern = re.compile(r'\\(?:input|include)\s*\{([^}]+)\}')
-        
         def replacer(match):
-            filename = match.group(1)
-            if not filename.endswith('.tex'):
-                filename += '.tex'
-            
+            filename = match.group(1).strip()
+            if not filename.endswith('.tex'): filename += '.tex'
             filepath = os.path.join(base_dir, filename)
-            
             if os.path.exists(filepath):
                 with open(filepath, 'r', encoding='utf-8') as f:
                     return self._resolve_inputs(f.read(), os.path.dirname(filepath))
             else:
+                log.warning(f"File specified in \\input not found: {filepath}")
                 return match.group(0)
-
         return input_pattern.sub(replacer, content)
 
-    def _parse_node_list_into_chunks(self, nodelist):
-        """
-        Recursively traverses the AST node list to identify and create chunks.
-        """
-        buffer = []
-        for node in nodelist:
-            if node.isNodeType(LatexMacroNode) and node.macroname in ['section', 'subsection', 'subsubsection']:
-                self._process_buffer_as_paragraph(buffer)
-                buffer = []
-                
-                level = {'section': 1, 'subsection': 2, 'subsubsection': 3}[node.macroname]
-                section_title = self._get_node_text(node.nodeargs[0]).strip()
-                
-                self.current_section_hierarchy = self.current_section_hierarchy[:level-1]
-                self.current_section_hierarchy.append(section_title)
-
-            elif node.isNodeType(LatexEnvironmentNode):
-                self._process_buffer_as_paragraph(buffer)
-                buffer = []
-                self._create_chunk_from_environment(node)
-
-            else:
-                buffer.append(node)
-        
-        self._process_buffer_as_paragraph(buffer)
-
-    def _process_buffer_as_paragraph(self, buffer):
-        """
-        Takes a buffer of nodes and creates a paragraph chunk if it's not empty.
-        """
-        if not buffer: return
-        content = ''.join([n.latex_verbatim() for n in buffer]).strip()
-        if not content: return
-
-        metadata = self._extract_metadata(buffer)
-        chunk_data = { 
-            'type': 'paragraph', 'content': content,
-            'parent_section': ' -> '.join(self.current_section_hierarchy) or 'Preamble',
-            'metadata': {'hierarchy_path': self.current_section_hierarchy.copy(), **metadata}
-        }
-        self.chunks.append(chunk_data)
-
-    def _create_chunk_from_environment(self, node):
-        """
-        Creates a specialized chunk from an environment node (e.g., figure, table).
-        """
-        env_name = node.environmentname
-        content = node.latex_verbatim()
-        metadata = self._extract_metadata(node.nodelist)
-        chunk_data = {
-            'type': env_name, 'content': content,
-            'parent_section': ' -> '.join(self.current_section_hierarchy) or 'Preamble',
-            'metadata': {
-                'hierarchy_path': self.current_section_hierarchy.copy(),
-                'caption': self._find_caption(node.nodelist if node.nodelist else []),
-                **metadata
-            }
-        }
-        self.chunks.append(chunk_data)
-
     def _extract_metadata(self, nodelist):
-        """
-        Extracts labels, citations, and references from a list of nodes.
-        """
         labels, citations, refs = [], [], []
         for node in nodelist:
             if node.isNodeType(LatexMacroNode):
-                if node.macroname == 'label':
-                    labels.append(self._get_node_text(node.nodeargs[0]))
-                elif node.macroname in ('cite', 'citep', 'citet'):
-                    citations.extend(self._get_node_text(node.nodeargs[0]).split(','))
-                elif node.macroname == 'ref':
-                    refs.append(self._get_node_text(node.nodeargs[0]))
-            elif node.isNodeType(LatexEnvironmentNode):
+                if node.macroname == 'label' and node.nodeargs: labels.append(self._get_node_text(node.nodeargs[0]))
+                elif node.macroname in ('cite', 'citep', 'citet') and node.nodeargs: citations.extend(self._get_node_text(node.nodeargs[0]).split(','))
+                elif node.macroname == 'ref' and node.nodeargs: refs.append(self._get_node_text(node.nodeargs[0]))
+            elif node.isNodeType(LatexEnvironmentNode) and node.nodelist:
                 child_metadata = self._extract_metadata(node.nodelist)
-                labels.extend(child_metadata['labels'])
-                citations.extend(child_metadata['citations'])
-                refs.extend(child_metadata['refs'])
-        return {
-            'labels': [l.strip() for l in labels],
-            'citations': [c.strip() for c in citations],
-            'refs': [r.strip() for r in refs]
-        }
-        
+                labels.extend(child_metadata['labels']); citations.extend(child_metadata['citations']); refs.extend(child_metadata['refs'])
+        return {'labels': [l.strip() for l in labels], 'citations': [c.strip() for c in citations], 'refs': [r.strip() for r in refs]}
+
     def _get_node_text(self, node):
         return node.latex_verbatim().strip('{}')
     
     def _find_caption(self, nodelist):
         for node in nodelist:
-            if node.isNodeType(LatexMacroNode) and node.macroname == 'caption':
+            if node.isNodeType(LatexMacroNode) and node.macroname == 'caption' and node.nodeargs:
                 return self._get_node_text(node.nodeargs[0])
         return None
-
-    def chunk_document_with_custom_sections(self):
-        initial_chunks = []
-        split_pattern = r'(% --- .+? ---)'
-        parts = re.split(split_pattern, self.full_content)
-        
-        if parts[0] and parts[0].strip():
-            initial_chunks.append({
-                'type': 'paragraph', 'content': parts[0].strip(),
-                'parent_section': 'Preamble', 'metadata': {'hierarchy_path': ['Preamble']}
-            })
-        for i in range(1, len(parts), 2):
-            title_match = re.search(r'% --- (.+?) ---', parts[i])
-            if not title_match: continue
-            section_name = title_match.group(1).strip()
-            section_content = parts[i+1].strip()
-            if not section_content: continue
-            try:
-                sub_chunker = ASTChunker(section_content, source_directory=self.source_directory)
-                sub_chunker.current_section_hierarchy = [section_name]
-                sub_chunker._parse_node_list_into_chunks(sub_chunker.nodelist)
-                initial_chunks.extend(sub_chunker.chunks)
-            except Exception as e:
-                log.warning(f"AST parsing failed for section '{section_name}'. Treating as raw text. Error: {e}")
-                initial_chunks.append({
-                    'type': 'paragraph', 'content': section_content,
-                    'parent_section': section_name, 'metadata': {'hierarchy_path': [section_name]}
-                })
-        return initial_chunks
 
 # --- Top-Level Functions ---
 def extract_document_sections(content, source_path):
     """
-    Main entry point for the new HYBRID, FORMAT-AWARE document chunking.
-    It inspects the file extension and dispatches to the correct chunker class.
+    Main entry point for ALL document chunking.
+    It inspects the file extension, dispatches to the correct chunker,
+    handles special cases like preamble preservation, runs shared post-processing,
+    and returns both the final chunks and any preserved data.
     """
     if not source_path:
         raise ValueError("source_path is required to determine file type.")
     
     _, extension = os.path.splitext(source_path)
     initial_chunks = []
+    preserved_data = {} # Initialize an empty dict for preserved data
 
-    if extension == '.tex' or extension == '.txt':
+    # --- 1. Format-Specific Initial Chunking ---
+    if extension in ['.tex', '.txt']:
+        log.info(f"-> Using ASTChunker for {extension} file.")
         chunker = ASTChunker(content, source_directory=os.path.dirname(source_path))
-        initial_chunks = chunker.chunk_document_with_custom_sections()
+        # The ASTChunker is special: it returns chunks AND the preserved preamble
+        initial_chunks, preserved_preamble = chunker.chunk()
+        if preserved_preamble:
+            preserved_data['latex_preamble'] = preserved_preamble
+    
     elif extension == '.docx':
+        log.info("-> Using DocxChunker for .docx file.")
+        # We need to load the document object for the docx chunker
+        from docx import Document
+        doc = Document(io.BytesIO(content)) # Assume content is bytes, or load from path
         chunker = DocxChunker()
-        initial_chunks = chunker.chunk_document(content)
+        initial_chunks = chunker.chunk_document(doc)
+
     elif extension == '.md':
-        # --- USE NEW LANGCHAIN CHUNKER ---
+        log.info("-> Using LangChainMarkdownChunker for .md file.")
         chunker = LangChainMarkdownChunker()
         initial_chunks = chunker.chunk_document(content)
+
     else:
         raise ChunkingError(f"Unsupported file format for chunking: {extension}")
     
-    # --- SHARED FINAL PASSES FOR ALL FORMATS ---
-    if not LLM_CHUNK_CONFIG['ENABLE_LLM_ENHANCEMENT']:
-        processed_chunks = initial_chunks
-    else:
+    if not initial_chunks:
+        log.warning("Initial chunking process resulted in zero chunks. Check input file.")
+
+    # --- 2. Shared Post-Processing (Applied to ALL formats) ---
+    
+    # Optional LLM Enhancement
+    if LLM_CHUNK_CONFIG['ENABLE_LLM_ENHANCEMENT']:
         log.info("-> Applying LLM-enhanced semantic splitting for long paragraphs...")
         processed_chunks = []
         llm_client = UnifiedLLMClient()
         langchain_llm = LangChainLLM(client=llm_client)
         for chunk in initial_chunks:
             if (chunk['type'] == 'paragraph' and 
-                len(chunk['content']) > LLM_CHUNK_CONFIG['SEMANTIC_SPLIT_THRESHOLD']):
-                log.info(f"    -> Splitting a long paragraph from section '{chunk['parent_section']}'...")
+                len(chunk.get('content', '')) > LLM_CHUNK_CONFIG['SEMANTIC_SPLIT_THRESHOLD']):
+                log.info(f"    -> Splitting a long paragraph from section '{chunk.get('parent_section', 'N/A')}'...")
                 sub_chunks_content = _llm_semantic_split_langchain(chunk['content'], langchain_llm)
                 for sub_content in sub_chunks_content:
                     new_chunk = chunk.copy()
@@ -307,12 +298,17 @@ def extract_document_sections(content, source_path):
                     processed_chunks.append(new_chunk)
             else:
                 processed_chunks.append(chunk)
+    else:
+        processed_chunks = initial_chunks
 
-    # FINAL STEP: Centralized ID Assignment
+    # Centralized ID Assignment
     for i, chunk in enumerate(processed_chunks):
         chunk['chunk_id'] = i
     
-    return processed_chunks
+    log.info(f"-> Final chunk count after post-processing: {len(processed_chunks)}")
+    
+    # --- 3. Return both chunks and preserved data ---
+    return processed_chunks, preserved_data
 
 def group_chunks_by_section(chunks):
     grouped = {}

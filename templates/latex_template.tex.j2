@@ -1,39 +1,28 @@
-((* block header *))
-\documentclass{article}
-\usepackage[utf8]{inputenc}
-\usepackage{graphicx}
-\usepackage{amsmath}
-\title{Refactored Document}
-\author{Gemini Refactor Engine}
-\date{\today}
-((* endblock *))
+{# templates/latex_template.tex.j2 #}
 
-\begin{document}
-\maketitle
+((* if preserved and preserved.latex_preamble *))
+    ((( preserved.latex_preamble | safe )))
+((* else *))
+    {# Fallback to a default preamble if none was preserved #}
+    \documentclass{article}
+    \usepackage[utf8]{inputenc}
+    \usepackage{graphicx}
+    \usepackage{amsmath}
+    \title{Refactored Document}
+    \author{Gemini Refactor Engine}
+    \date{\today}
+    \begin{document}
+    \maketitle
+((* endif *))
+
+{# --- The rest of the template remains the same --- #}
 
 ((* macro render_nodes(node_level, level) *))
-    ((* set section_map = {1: 'section', 2: 'subsection', 3: 'subsubsection'} *))
-    ((* set command = section_map.get(level, 'paragraph') *))
-
-    ((* for title, data in node_level.items() *))
-        \((( command ))){((( title )))}
-
-        ((( data.get('processed_content', '') | safe )))
-
-        ((* if data.get('subsections') *))
-            ((( render_nodes(data.subsections, level + 1) )))
-        ((* endif *))
-    ((* endfor *))
+    ...
 ((* endmacro *))
 
 ((( render_nodes(processed_tree, 1) )))
 
-((* if orphaned_content *))
-\section*{Uncategorized Content}
-    ((* for chunk in orphaned_content *))
-        ((( chunk.content | safe )))
-    \par
-    ((* endfor *))
-((* endif *))
+...
 
 \end{document}

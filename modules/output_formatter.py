@@ -41,7 +41,7 @@ class HierarchicalOutputFormatter:
             self.env.comment_end_string = '#))'
         # --- END JINJA2 SETUP ---
 
-    def format_document(self, processed_tree):
+    def format_document(self, processed_tree, preserved_data=None):
         """
         The main entry point for formatting the entire document tree.
         It loads the appropriate template and renders it with the tree data.
@@ -66,6 +66,7 @@ class HierarchicalOutputFormatter:
         
         # The 'render' call passes your Python data to the template and returns the final string
         return template.render(
-            processed_tree=processed_tree,
-            orphaned_content=orphaned_chunks
-        )
+                    processed_tree=processed_tree,
+                    orphaned_content=orphaned_chunks,
+                    preserved=preserved_data or {} # Ensure it's never None
+                    )

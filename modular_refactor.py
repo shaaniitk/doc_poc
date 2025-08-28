@@ -31,6 +31,7 @@ from modules.output_formatter import HierarchicalOutputFormatter
 from modules.output_manager import OutputManager
 from config import DOCUMENT_TEMPLATES
 from modules.output_manager import final_latex_sanitization
+from modules.template_enhancer import TemplateEnhancer
 
 # --- Configure Basic Logging ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -59,11 +60,20 @@ def main(source, source2=None, combine_strategy="smart", output_format="latex",
         log.info("--- STAGE 1: PARSING & CHUNKING ---")
         log_entries.append("Entering Stage 1: Parsing & Chunking.")
         content = load_file_content(source)
-        all_chunks_from_parser = extract_document_sections(content, source_path=source)
+        all_chunks_from_parser, preserved_data = extract_document_sections(content, source_path=source)
         chunk_output_path = output_manager.save_json_output("1_chunk_output.json", all_chunks_from_parser)
         log.info(f"-> Found {len(all_chunks_from_parser)} initial chunks.")
         log.info(f"-> Chunking results saved to: {chunk_output_path}")
         log_entries.append(f"Stage 1 completed. Found {len(all_chunks_from_parser)} chunks.")
+
+            # ---  DYNAMIC TEMPLATE ENHANCEMENT ---
+        log.info("-- DYNAMIC TEMPLATE ENHANCEMENT ---")
+        llm_client = UnifiedLLMClient() # We'll need the client early
+        original_template = DOCUMENT_TEMPLATES[template]
+        enhancer = TemplateEnhancer(llm_client)
+        # Create the full text from chunks for the enhancer
+        full_text_content = "\n\n".join([chunk['content'] for chunk in all_chunks_from_parser])
+        enhanced_template = enhancer.enhance_template(original_template, full_text_content)
 
         if stage == "chunk":
             log.info("--- Pipeline halted after 'chunk' stage as requested. ---")
@@ -72,7 +82,7 @@ def main(source, source2=None, combine_strategy="smart", output_format="latex",
         # --- Stage 2: Intelligent Mapping ---
         log.info("--- STAGE 2: INTELLIGENT MAPPING ---")
         log_entries.append("Entering Stage 2: Intelligent Mapping.")
-        mapper = IntelligentMapper(template) # No flag in the constructor
+        mapper = IntelligentMapper(template_name=template, template_object=enhanced_template) # No flag in the constructor
         mapped_tree = mapper.map_chunks(all_chunks_from_parser, use_llm_pass=remediate_orphans) # Flag goes here
         map_output_path = output_manager.save_json_output("2_mapped_tree.json", mapped_tree)
         log.info(f"-> Mapped tree structure saved to: {map_output_path}")
@@ -141,7 +151,7 @@ def main(source, source2=None, combine_strategy="smart", output_format="latex",
         log.info("--- STAGE 7: Saving All Outputs ---")
         output_manager.save_processed_tree_nodes(final_tree)
         formatter = HierarchicalOutputFormatter(output_format)
-        final_document_string = formatter.format_document(final_tree)
+        final_document_string = formatter.format_document(final_tree, preserved_data=preserved_data)
 
         if output_format == "latex":
             log.info("-> Running final sanitization pass on LaTeX output...")

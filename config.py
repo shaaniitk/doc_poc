@@ -82,9 +82,9 @@ DOCUMENT_TEMPLATES = {
         {"section": "8. Simplified Payment Verification", "prompt": "Format as LaTeX with section title 'Simplified Payment Verification'. Preserve all technical content exactly.", "description": "Explains how payment verification can be achieved without running a full network node, by using block headers."},
         {"section": "9. Combining and Splitting Value", "prompt": "Format as LaTeX with section title 'Combining and Splitting Value'. Preserve all technical content exactly.", "description": "Describes how transactions can handle multiple inputs and outputs to combine and split currency value."},
         {"section": "10. Privacy", "prompt": "Format as LaTeX with section title 'Privacy'. Preserve all technical content exactly.", "description": "Addresses the privacy model of the system, where public keys are anonymous but transaction flow can be traced."},
-        {"section": "11. Major and Minor Assumptions", "prompt": "Format as LaTeX with section title 'Major and Minor Assumptions'. Preserve all technical content exactly.", "description": "A section to consolidate all the key assumptions, both major and minor, that the system's security and functionality rely on."},
-        {"section": "12. Calculations", "prompt": "Format as LaTeX with section title 'Calculations'. Preserve all technical content exactly.", "description": "Presents the mathematical analysis and calculations, particularly regarding the probability of an attacker catching up to the honest chain."},
-        {"section": "13. Conclusion", "prompt": "Format as LaTeX with section title 'Conclusion'. Preserve all technical content exactly.", "description": "The concluding section summarizing the benefits of the proposed electronic cash system, such as eliminating the need for trust and protecting sellers."}
+        {"section": "Major and Minor Assumptions", "prompt": "Format as LaTeX with section title 'Major and Minor Assumptions'. Preserve all technical content exactly.", "description": "A section to consolidate all the key assumptions, both major and minor, that the system's security and functionality rely on."},
+        {"section": "Calculations", "prompt": "Format as LaTeX with section title 'Calculations'. Preserve all technical content exactly.", "description": "Presents the mathematical analysis and calculations, particularly regarding the probability of an attacker catching up to the honest chain."},
+        {"section": "Conclusion", "prompt": "Format as LaTeX with section title 'Conclusion'. Preserve all technical content exactly.", "description": "The concluding section summarizing the benefits of the proposed electronic cash system, such as eliminating the need for trust and protecting sellers."}
     ],
      "bitcoin_paper_hierarchical": {
        "Abstract": { 
@@ -101,11 +101,10 @@ DOCUMENT_TEMPLATES = {
                     "subsections": {}
                 },
         "Introduction": {
-            "prompt": "You are a LaTeX expert. Refactor the following introductory content for clarity and logical flow...",
-            "description": "This is the instroductory section of the document which introduces the main concepts of bitcoin and its background and should streamlessly create a background for the document and movement to the next section.",
-            "chunks": [],
-            "subsections": {}
-        },
+        "description": "The introductory section of the document, providing background, problem statement, and proposed solution.",
+        "dynamic_description": True,
+        "subsections": {}
+    },
         "Transactions": {
             "prompt": "You are a LaTeX expert. Refactor the following content to precisely define an electronic coin...",
             "description": "This section details the fundamental definition of an electronic coin as a chain of digital signatures...",
@@ -159,13 +158,13 @@ DOCUMENT_TEMPLATES = {
             "description": "An overarching section that covers the security properties of the system...",
             "chunks": [],
             "subsections": {
-                "10.1 Privacy Model": {
+                " Privacy Model": {
                     "prompt": "You are a LaTeX expert. Refactor this content to focus specifically on the privacy model...",
                     "description": "Addresses the privacy model of the system...",
                     "chunks": [],
                     "subsections": {}
                 },
-                "10.2 Attack Vector Calculations": {
+                " Attack Vector Calculations": {
                     "prompt": "You are a LaTeX expert and mathematician. Refactor the following text and equations...",
                     "description": "Presents the mathematical analysis of the system's security against an attacker...",
                     "chunks": [],
@@ -174,18 +173,18 @@ DOCUMENT_TEMPLATES = {
             }
         },
         # --- NEW ASSUMPTIONS SECTION ---
-        "11. Assumptions": {
+        "Assumptions": {
             "prompt": "You are a system analyst and LaTeX expert. Based on the document content, provide a brief introductory paragraph for a section that will outline the core assumptions the system relies on. This paragraph should set the stage for the major and minor subsections.",
             "description": "A section dedicated to explicitly stating the underlying assumptions required for the Bitcoin protocol to function securely and effectively. This includes assumptions about network behavior and participant honesty.",
             "chunks": [],
             "subsections": {
-                "11.1 Major Assumptions": {
+                " Major Assumptions": {
                     "prompt": "You are a system analyst and LaTeX expert. From the provided text, extract and clearly articulate the most critical assumptions for the system's security. The primary assumption is that honest nodes control a majority of CPU power. Explain the implications of this assumption.",
                     "description": "Details the most critical, foundational assumptions of the system. The foremost assumption is that the majority of the CPU power in the network is controlled by honest nodes that are not conspiring to attack the network.",
                     "chunks": [],
                     "subsections": {}
                 },
-                "11.2 Minor Assumptions": {
+                " Minor Assumptions": {
                     "prompt": "You are a system analyst and LaTeX expert. From the provided text, identify and list any secondary or implicit assumptions. This could include assumptions about network latency (nodes receive broadcasts in a timely manner) or participant behavior (nodes are economically rational).",
                     "description": "Outlines other, less critical but still important, assumptions. This includes assumptions such as nodes having reliable network connectivity, the practicality of storing block headers for SPV, and that participants generally act in their own economic self-interest.",
                     "chunks": [],
@@ -193,19 +192,19 @@ DOCUMENT_TEMPLATES = {
                 }
             }
         },
-        "12. Conclusion": {
+        "Conclusion": {
             "prompt": "You are a LaTeX expert. Refactor the following content into a strong, formal conclusion...",
             "description": "The concluding section that summarizes the paper's proposal...",
             "chunks": [],
             "subsections": {}
         },
-        "13. References": {
+        "References": {
             "prompt": "You are a LaTeX expert. Format the following content as a standard 'References' section...",
             "description": "The list of citations and prior work referenced in the paper...",
             "chunks": [],
             "subsections": {}
         },
-        "14. System Tests": {
+        "System Tests": {
         # --- ADD THIS FLAG ---
         "dynamic_subsections": True,
         # This prompt is used for the *content* of each dynamically created subsection
@@ -342,6 +341,12 @@ You are a meticulous quality assurance editor. You will be given a piece of text
 **Your Task:**
 First, write a brief critique of the "Refactored Text to Review" based on the checklist above.
 Second, based on your critique, provide a final, polished version of the text.
+
+ **RULES:**
+    1. Your output MUST be ONLY the final, polished version of the text.
+    2. Do NOT provide any explanation, critique, or list of improvements.
+    3. Do NOT use any conversational filler.
+    4. Your response MUST begin with the phrase "Final Polished Version:" followed by the text.
 
 **Critique:**
 [Your brief critique here]
@@ -483,7 +488,21 @@ Refactored LaTeX Content:
  ---
  {text_content}
  ---
- """
+ """,
+  'generate_dynamic_description': """
+        You are an expert document analyst. I will provide you with the full text of a document. Your task is to write a dense, keyword-rich, one-paragraph description for the section titled '{section_title}'.
+
+        This description will be used by an AI to perform a semantic search, so it is critical that it contains the core concepts, specific terminology, problems, and solutions mentioned in that part of the document.
+
+        Do NOT describe the section in general terms. Analyze the provided text and extract the key semantic themes. Respond with ONLY the descriptive paragraph and nothing else.
+
+        **Full Document Text:**
+        ---
+        {full_text_excerpt}
+        ---
+
+        **Generated Description for '{section_title}':**
+    """
 
 }
 
