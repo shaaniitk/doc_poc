@@ -20,11 +20,24 @@ LLM_CONFIG = {
 # Semantic Mapping Configuration
 # This new section configures the model used for semantic chunk assignment.
 SEMANTIC_MAPPING_CONFIG = {
-    # A lightweight sentence-transformer model for fast and effective semantic similarity calculation.
     "model": "all-MiniLM-L6-v2",
-    # The minimum cosine similarity score required to assign a chunk to a section.
-    # This is a tunable parameter; a lower value is more inclusive, a higher value is more strict.
-    "similarity_threshold": 0.3
+    "similarity_threshold": 0.6,
+    "device": "cpu",
+    "batch_size": 32,
+    "top_k_candidates": 3,
+    # Accept borderline matches within this margin below the threshold
+    "soft_accept_margin": 0.05,
+    # Also accept if the top-1 similarity exceeds top-2 by at least this gap
+    "gap_accept_margin": 0.1,
+    # Explicit alias used by output_manager (falls back to soft_accept_margin if absent)
+    "low_confidence_margin": 0.05,
+    # Boosting knobs for intelligent_mapper._run_graph_boost_pass
+    "confidence_threshold": 0.6,
+    "boost_amount": 0.3,
+    "enable_neighbor_window_boost": True,
+    "neighbor_window": 2,
+    "neighbor_boost_amount": 0.05,
+    "neighbor_max_boost": 0.2,
 }
 
 # LLM-Enhanced Chunking Configuration

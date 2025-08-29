@@ -8,6 +8,7 @@
 \usepackage{hyperref}
 \usepackage{enumitem}
 \usepackage{booktabs}
+\usepackage{xcolor}
 \usepackage{geometry}
 \geometry{margin=1in}
 
@@ -33,6 +34,10 @@
 \subparagraph{((( title )))}
 ((* endif *))
 
+((* if data.get('low_confidence_count') *))
+{\small\textcolor{red}{[Review: ((( data.low_confidence_count ))) low-confidence mapped chunk(s)]}}
+((* endif *))
+
 ((( data.get('processed_content', '') )))
 
 ((* if data.get('subsections') *))
@@ -45,8 +50,37 @@
 
 ((* if orphaned_content and orphaned_content|length > 0 *))
 \section*{Uncategorized Content}
+
+\textit{The following chunks could not be automatically assigned to specific sections. Each chunk shows its top candidate sections with similarity scores to assist in manual review and placement.}
+
 ((* for chunk in orphaned_content *))
+\subsection*{Orphaned Chunk ((( loop.index )))}
+
+((* if chunk.get('metadata', {}).get('candidate_sections') *))
+\textbf{Nearest Section Suggestions:}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{|l|c|c|}
+\hline
+\textbf{Section Path} & \textbf{Similarity} & \textbf{Distance} \\
+\hline
+((* for candidate in chunk.metadata.candidate_sections[:3] *))
+((( candidate.path_str ))) & ((( "%.3f"|format(candidate.score) ))) & ((( "%.3f"|format(candidate.distance) ))) \\
+\hline
+((* endfor *))
+\end{tabular}
+\end{table}
+
+((* endif *))
+
+\textbf{Content:}
+
 ((( chunk.get('content', '') )))
+
+\vspace{0.5cm}
+\hrule
+\vspace{0.5cm}
 
 ((* endfor *))
 ((* endif *))

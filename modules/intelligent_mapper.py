@@ -64,16 +64,69 @@ class IntelligentMapper:
         best_match_indices = np.argmax(boosted_similarity_matrix, axis=1)
         best_match_scores = np.max(boosted_similarity_matrix, axis=1)
         threshold = self.config['similarity_threshold']
+        soft_margin = self.config.get('soft_accept_margin', 0.05)
+        gap_margin = self.config.get('gap_accept_margin', 0.1)
+        top_k = self.config.get('top_k_candidates', 3)
 
         for i, chunk in enumerate(all_chunks_in_order):
             best_path_index = best_match_indices[i]
             score = best_match_scores[i]
+            if 'metadata' not in chunk:
+                chunk['metadata'] = {}
             chunk['metadata']['assignment_score'] = float(score)
 
+            # Compute secondary score for gap heuristic
+            row = boosted_similarity_matrix[i]
+            if row.shape[0] >= 2:
+                sorted_scores = np.sort(row)
+                second_best = float(sorted_scores[-2])
+            else:
+                second_best = 0.0
+            top_gap = float(score - second_best)
+            chunk['metadata']['top2_gap'] = top_gap
+
+            # Compute top-k candidate sections (for analytics/UX) from boosted scores
+            sorted_indices = np.argsort(row)[::-1]
+            candidate_sections = []
+            for j in range(min(top_k, len(sorted_indices))):
+                section_idx = int(sorted_indices[j])
+                section_path = self.section_paths[section_idx]
+                section_score = float(row[section_idx])
+                section_distance = max(0.0, min(1.0, 1.0 - section_score))
+                
+                candidate_sections.append({
+                    'path': section_path,
+                    'path_str': ' > '.join(section_path),
+                    'score': section_score,
+                    'distance': section_distance
+                })
+            
+            if 'metadata' not in chunk:
+                chunk['metadata'] = {}
+            chunk['metadata']['candidate_sections'] = candidate_sections
+            chunk['metadata']['assignment_score'] = float(score)
+            
+            if candidate_sections:
+                chunk['metadata']['nearest_section_suggestion'] = candidate_sections[0]['path_str']
+                chunk['metadata']['distance_to_nearest'] = candidate_sections[0]['distance']
+            
+            # Gap heuristic
+            if len(candidate_sections) >= 2:
+                second_best = candidate_sections[1]['score']
+            else:
+                second_best = 0.0
+            top_gap = float(score - second_best)
+            chunk['metadata']['top2_gap'] = top_gap
+            
             if score >= threshold:
                 best_path = self.section_paths[best_path_index]
-                if not self._assign_chunk_to_path(mapped_tree, chunk, best_path):
-                    unmapped_chunks.append(chunk)
+                self._assign_chunk_to_path(mapped_tree, chunk, best_path)
+            elif score >= (threshold - soft_margin) or top_gap >= gap_margin:
+                # Soft-accept borderline match to reduce orphaning; mark as low-confidence
+                best_path = self.section_paths[best_path_index]
+                chunk['metadata']['soft_assigned'] = True
+                chunk['metadata']['assignment_confidence'] = 'low'
+                self._assign_chunk_to_path(mapped_tree, chunk, best_path)
             else:
                 unmapped_chunks.append(chunk)
         
@@ -112,13 +165,14 @@ class IntelligentMapper:
             target_node['chunks'].append(chunk)
             return True
         except KeyError:
-            log.warning(f"Could not find path '{" -> ".join(path)}' in tree skeleton for chunk assignment.")
+            log.warning(f"Could not find path {' -> '.join(path)} in tree skeleton for chunk assignment.")
             return False
 
     def _run_semantic_pass(self, chunks):
         """
         Performs a simple, high-confidence semantic mapping. This is used by
         other modules like the LLMHandler for quick, internal re-mapping tasks.
+        Now computes and preserves top-k candidate sections with similarity distances.
         """
         mapped_tree = self._create_empty_skeleton(self.skeleton)
         orphans = []
@@ -132,15 +186,65 @@ class IntelligentMapper:
         best_match_indices = np.argmax(similarity_matrix, axis=1)
         best_match_scores = np.max(similarity_matrix, axis=1)
         threshold = self.config['similarity_threshold']
+        top_k = self.config.get('top_k_candidates', 3)
+        soft_margin = self.config.get('soft_accept_margin', 0.05)
+        gap_margin = self.config.get('gap_accept_margin', 0.1)
         
         for i, chunk in enumerate(chunks):
             score = best_match_scores[i]
+            # Compute top-k candidate sections for this chunk
+            chunk_similarities = similarity_matrix[i]
+            sorted_indices = np.argsort(chunk_similarities)[::-1]
+            
+            candidate_sections = []
+            for j in range(min(top_k, len(sorted_indices))):
+                section_idx = sorted_indices[j]
+                section_path = self.section_paths[section_idx]
+                section_score = float(chunk_similarities[section_idx])
+                section_distance = max(0.0, min(1.0, 1.0 - section_score))
+                
+                candidate_sections.append({
+                     'path': section_path,
+                     'path_str': ' > '.join(section_path),
+                     'score': section_score,
+                     'distance': section_distance
+                 })
+            
+            if 'metadata' not in chunk:
+                chunk['metadata'] = {}
+            chunk['metadata']['candidate_sections'] = candidate_sections
             chunk['metadata']['assignment_score'] = float(score)
+            
+            if candidate_sections:
+                chunk['metadata']['nearest_section_suggestion'] = candidate_sections[0]['path_str']
+                chunk['metadata']['distance_to_nearest'] = candidate_sections[0]['distance']
+            
+            # Gap heuristic
+            if len(candidate_sections) >= 2:
+                second_best = candidate_sections[1]['score']
+            else:
+                second_best = 0.0
+            top_gap = float(score - second_best)
+            chunk['metadata']['top2_gap'] = top_gap
+            
             if score >= threshold:
                 best_path = self.section_paths[best_match_indices[i]]
                 if not self._assign_chunk_to_path(mapped_tree, chunk, best_path):
+                    chunk.setdefault('metadata', {})
+                    chunk['metadata']['orphan_reason'] = 'path_missing'
+                    orphans.append(chunk)
+            elif score >= (threshold - soft_margin) or top_gap >= gap_margin:
+                best_path = self.section_paths[best_match_indices[i]]
+                chunk['metadata']['soft_assigned'] = True
+                chunk['metadata']['assignment_confidence'] = 'low'
+                if not self._assign_chunk_to_path(mapped_tree, chunk, best_path):
+                    chunk.setdefault('metadata', {})
+                    chunk['metadata']['orphan_reason'] = 'path_missing_soft'
                     orphans.append(chunk)
             else:
+                chunk.setdefault('metadata', {})
+                chunk['metadata']['orphan_reason'] = 'low_similarity'
+                chunk['metadata']['orphan_threshold'] = float(threshold)
                 orphans.append(chunk)
         return mapped_tree, orphans
 
@@ -149,17 +253,39 @@ class IntelligentMapper:
         section_details = "\n".join([f"- Path: {' -> '.join(s['path'])}\n  Description: {s['description']}" for s in self.flat_skeleton])
         prompt_template = PromptTemplate(input_variables=["section_details", "chunk_content"], template=PROMPTS['llm_map_chunk_to_section'])
         chain = LLMChain(llm=self.langchain_llm, prompt=prompt_template)
-        valid_paths = {" -> ".join(p) for p in self.section_paths}
+        # Build case-insensitive map for valid paths
+        valid_paths_map = {" -> ".join(p).lower(): p for p in self.section_paths}
+        soft_margin = self.config.get('soft_accept_margin', 0.05)
+        similarity_threshold = self.config.get('similarity_threshold', 0.7)
+        fallback_distance = 1.0 - max(similarity_threshold - soft_margin, 0.0)
 
         for orphan in orphans:
             try:
                 response = chain.invoke({"section_details": section_details, "chunk_content": orphan['content']})['text'].strip()
-                if response in valid_paths:
-                    target_path = response.split(' -> ')
+                # Normalize LLM response
+                first_line = response.splitlines()[0].strip().strip('"').strip("'")
+                normalized = first_line.replace(' > ', ' -> ').replace('—', '->').replace(' - ', ' -> ').strip()
+                target_path = valid_paths_map.get(normalized.lower())
+
+                if target_path:
                     if not self._assign_chunk_to_path(mapped_tree, orphan, target_path):
                         remaining_orphans.append(orphan)
                 else:
-                    remaining_orphans.append(orphan)
+                    # Fallback: nearest candidate if sufficiently close
+                    cand = orphan.get('metadata', {}).get('candidate_sections', [])
+                    if cand:
+                        nearest = cand[0]
+                        if float(nearest.get('distance', 1.0)) <= fallback_distance:
+                            orphan.setdefault('metadata', {})
+                            orphan['metadata']['soft_assigned'] = True
+                            orphan['metadata']['assignment_confidence'] = 'low'
+                            orphan['metadata']['rescued_by'] = 'llm_fallback_nearest'
+                            if not self._assign_chunk_to_path(mapped_tree, orphan, nearest['path']):
+                                remaining_orphans.append(orphan)
+                        else:
+                            remaining_orphans.append(orphan)
+                    else:
+                        remaining_orphans.append(orphan)
             except Exception as e:
                 log.error(f"LangChain LLM mapping failed for chunk {orphan.get('chunk_id', 'N/A')}: {e}")
                 remaining_orphans.append(orphan)
@@ -194,6 +320,10 @@ class IntelligentMapper:
         rescue_missions = []
         still_orphaned = []
         
+        soft_margin = self.config.get('soft_accept_margin', 0.05)
+        similarity_threshold = self.config.get('similarity_threshold', 0.7)
+        fallback_distance = 1.0 - max(similarity_threshold - soft_margin, 0.0)
+        
         for orphan in orphans:
             orphan_id = orphan.get('chunk_id')
             if orphan_id is None:
@@ -202,38 +332,108 @@ class IntelligentMapper:
             
             rescued = False
             
-            # Method 1: Neighbor Cohesion (Highest Priority)
+            # Method 1: Neighbor Cohesion (Extended)
             prev_chunk_path = chunk_id_to_path_map.get(orphan_id - 1)
             next_chunk_path = chunk_id_to_path_map.get(orphan_id + 1)
-            if prev_chunk_path and prev_chunk_path == next_chunk_path:
-                # Plan to insert this orphan *after* its preceding neighbor
-                mission = {'orphan': orphan, 'target_path': prev_chunk_path, 'insert_after_id': orphan_id - 1}
+            if prev_chunk_path and next_chunk_path and prev_chunk_path == next_chunk_path:
+                # Insert after its preceding neighbor when both neighbors are in the same section
+                mission = {'orphan': orphan, 'target_path': prev_chunk_path, 'insert_after_id': orphan_id - 1, 'insert_before_id': None, 'method': 'neighbor_both'}
                 rescue_missions.append(mission)
-                log.info(f"  -> Planning rescue for orphan {orphan_id} via Neighbor Cohesion.")
+                log.info(f"  -> Planning rescue for orphan {orphan_id} via Neighbor Cohesion (both neighbors match).")
+                rescued = True
+            elif prev_chunk_path and not next_chunk_path:
+                # Only previous neighbor exists: insert after previous
+                mission = {'orphan': orphan, 'target_path': prev_chunk_path, 'insert_after_id': orphan_id - 1, 'insert_before_id': None, 'method': 'neighbor_prev_only'}
+                rescue_missions.append(mission)
+                log.info(f"  -> Planning rescue for orphan {orphan_id} via Neighbor Cohesion (prev only).")
+                rescued = True
+            elif next_chunk_path and not prev_chunk_path:
+                # Only next neighbor exists: insert before next
+                mission = {'orphan': orphan, 'target_path': next_chunk_path, 'insert_after_id': None, 'insert_before_id': orphan_id + 1, 'method': 'neighbor_next_only'}
+                rescue_missions.append(mission)
+                log.info(f"  -> Planning rescue for orphan {orphan_id} via Neighbor Cohesion (next only).")
+                rescued = True
+            elif prev_chunk_path and next_chunk_path and prev_chunk_path != next_chunk_path:
+                # Neighbors disagree: bias to previous section to maintain narrative flow
+                mission = {'orphan': orphan, 'target_path': prev_chunk_path, 'insert_after_id': orphan_id - 1, 'insert_before_id': None, 'method': 'neighbor_disagree_prev_bias'}
+                rescue_missions.append(mission)
+                log.info(f"  -> Planning rescue for orphan {orphan_id} via Neighbor Cohesion (neighbors disagree, prev-biased).")
                 rescued = True
             
-            # Method 2: Graph Cohesion (if not rescued by neighbor)
+            # Method 2: Graph Cohesion using outgoing references (if not rescued by neighbor)
             if not rescued and reference_graph.has_node(orphan_id):
                 for _, target_id in reference_graph.out_edges(orphan_id):
                     target_path = chunk_id_to_path_map.get(target_id)
                     if target_path:
-                        # Plan to just append this orphan to the section of the chunk it references
-                        mission = {'orphan': orphan, 'target_path': target_path, 'insert_after_id': None}
+                        mission = {'orphan': orphan, 'target_path': target_path, 'insert_after_id': None, 'insert_before_id': None, 'method': f'graph_out->{target_id}'}
                         rescue_missions.append(mission)
                         log.info(f"  -> Planning rescue for orphan {orphan_id} via Graph Cohesion (references chunk {target_id}).")
                         rescued = True
-                        break # One rescue is enough
+                        break
+            
+            # Method 3: Graph Cohesion using incoming references (commonly for figures/tables/equations)
+            if not rescued and reference_graph.has_node(orphan_id):
+                in_neighbors = []
+                for source_id, _ in reference_graph.in_edges(orphan_id):
+                    path = chunk_id_to_path_map.get(source_id)
+                    if path:
+                        in_neighbors.append((source_id, tuple(path)))
+                if in_neighbors:
+                    # Choose the most common target section among referrers
+                    from collections import Counter
+                    section_counts = Counter([p for _, p in in_neighbors])
+                    chosen_section, _ = section_counts.most_common(1)[0]
+                    # Anchor near the first referring chunk in that section if possible
+                    anchor_id = None
+                    for source_id, p in in_neighbors:
+                        if p == chosen_section:
+                            anchor_id = source_id
+                            break
+                    mission = {
+                        'orphan': orphan,
+                        'target_path': list(chosen_section),
+                        'insert_after_id': anchor_id,
+                        'insert_before_id': None,
+                        'method': 'graph_in_majority'
+                    }
+                    rescue_missions.append(mission)
+                    log.info(f"  -> Planning rescue for orphan {orphan_id} via Incoming Graph Cohesion (majority of referrers).")
+                    rescued = True
+            
+            # Method 4: Nearest-candidate fallback if sufficiently close
+            if not rescued:
+                cand = orphan.get('metadata', {}).get('candidate_sections', [])
+                if cand:
+                    nearest = cand[0]
+                    if float(nearest.get('distance', 1.0)) <= fallback_distance:
+                        mission = {
+                            'orphan': orphan,
+                            'target_path': nearest['path'],
+                            'insert_after_id': None,
+                            'insert_before_id': None,
+                            'method': 'candidate_nearest'
+                        }
+                        rescue_missions.append(mission)
+                        log.info(f"  -> Planning rescue for orphan {orphan_id} via Nearest Candidate (distance {nearest.get('distance'):.3f}).")
+                        rescued = True
 
             if not rescued:
                 still_orphaned.append(orphan)
 
         log.info(f"  -> Cohesion Pass Analysis complete. Planned {len(rescue_missions)} rescue missions.")
 
+        # Sort missions by target_path and chunk_id to preserve order when multiple rescues land in same section
+        try:
+            rescue_missions.sort(key=lambda m: (tuple(m['target_path']), m['orphan'].get('chunk_id', float('inf'))))
+        except Exception:
+            pass
+
         # --- STAGE 3: Mission Execution ---
         for mission in rescue_missions:
             orphan_to_rescue = mission['orphan']
             target_path = mission['target_path']
             insert_after_id = mission['insert_after_id']
+            insert_before_id = mission['insert_before_id']
             
             try:
                 parent_node = mapped_tree
@@ -241,26 +441,43 @@ class IntelligentMapper:
                     parent_node = parent_node[part]['subsections']
                 target_node = parent_node[target_path[-1]]
                 
-                # --- THIS IS THE CRITICAL LOGIC ---
                 # Update metadata BEFORE assignment
+                orphan_to_rescue.setdefault('metadata', {})
                 orphan_to_rescue['metadata']['hierarchy_path'] = target_path
                 orphan_to_rescue['parent_section'] = ' -> '.join(target_path)
+                orphan_to_rescue['metadata']['soft_assigned'] = True
+                orphan_to_rescue['metadata']['assignment_confidence'] = 'low'
+                orphan_to_rescue['metadata']['rescued_by'] = mission.get('method', 'cohesion')
                 
-                if insert_after_id is not None:
+                # Ensure target node has a chunks list to insert into
+                if 'chunks' not in target_node or not isinstance(target_node.get('chunks'), list):
+                    target_node['chunks'] = []
+
+                if insert_before_id is not None:
+                    # Find the index of the neighbor and insert before it
+                    neighbor_index = -1
+                    for i, chunk in enumerate(target_node['chunks']):
+                        if chunk.get('chunk_id') == insert_before_id:
+                            neighbor_index = i
+                            break
+                    if neighbor_index != -1:
+                        target_node['chunks'].insert(neighbor_index, orphan_to_rescue)
+                    else:
+                        # If anchor not found, insert at beginning as a reasonable default
+                        target_node['chunks'].insert(0, orphan_to_rescue)
+                elif insert_after_id is not None:
                     # Find the index of the neighbor and insert after it
                     neighbor_index = -1
                     for i, chunk in enumerate(target_node['chunks']):
                         if chunk.get('chunk_id') == insert_after_id:
                             neighbor_index = i
                             break
-                    
                     if neighbor_index != -1:
                         target_node['chunks'].insert(neighbor_index + 1, orphan_to_rescue)
                     else:
-                        # Fallback if neighbor not found (should be rare)
                         target_node['chunks'].append(orphan_to_rescue)
                 else:
-                    # If rescued by graph, just append to the end of the section
+                    # If rescued by graph without anchor, just append to the end of the section
                     target_node['chunks'].append(orphan_to_rescue)
 
             except Exception as e:
@@ -270,9 +487,23 @@ class IntelligentMapper:
         return mapped_tree, still_orphaned
 
     def _run_graph_boost_pass(self, similarity_matrix, all_chunks_in_order, reference_graph):
+        """
+        Pass 1: Confidence boosting prior to final assignment.
+        - Boosts similarity toward sections referenced by confident neighbors via the reference graph.
+        - Optionally applies a sliding-window neighbor boost to promote local cohesion.
+        Safe: caps boosted scores at 1.0 and never reduces any score.
+        """
         log.info("--- Mapper Pass 1: Graph-Based Confidence Boosting ---")
+        # Base thresholds
         CONFIDENCE_THRESHOLD = self.config.get('confidence_threshold', 0.6)
         BOOST_AMOUNT = self.config.get('boost_amount', 0.3)
+        # Neighbor window boosting (configurable)
+        ENABLE_NEIGHBOR_BOOST = self.config.get('enable_neighbor_window_boost', True)
+        NEIGHBOR_WINDOW = int(self.config.get('neighbor_window', 2))
+        NEIGHBOR_BOOST = float(self.config.get('neighbor_boost_amount', 0.05))
+        NEIGHBOR_MAX = float(self.config.get('neighbor_max_boost', 0.2))
+
+        # Compute current best matches
         best_match_indices = np.argmax(similarity_matrix, axis=1)
         best_match_scores = np.max(similarity_matrix, axis=1)
         confident_placements = {
@@ -280,11 +511,54 @@ class IntelligentMapper:
             for i, chunk in enumerate(all_chunks_in_order)
             if chunk.get('chunk_id') is not None and best_match_scores[i] >= CONFIDENCE_THRESHOLD
         }
+        # Robust mapping from chunk_id -> row index
+        id_to_row = {chunk.get('chunk_id'): i for i, chunk in enumerate(all_chunks_in_order) if chunk.get('chunk_id') is not None}
+
+        # 1) Graph-based boost: if chunk A references chunk B and B is confidently placed,
+        #    boost A toward B's section.
         for source_id, target_id in reference_graph.edges():
-            if target_id in confident_placements and source_id < similarity_matrix.shape[0]:
+            source_row = id_to_row.get(source_id)
+            if source_row is None:
+                continue
+            if target_id in confident_placements and 0 <= source_row < similarity_matrix.shape[0]:
                 target_section_index = confident_placements[target_id]
-                original_score = similarity_matrix[source_id, target_section_index]
-                similarity_matrix[source_id, target_section_index] = min(1.0, original_score + BOOST_AMOUNT)
+                original_score = similarity_matrix[source_row, target_section_index]
+                similarity_matrix[source_row, target_section_index] = min(1.0, original_score + BOOST_AMOUNT)
+
+        # 2) Neighbor-window boost: within a sliding window, if neighbors are confidently
+        #    clustered in one section, gently boost current chunk toward that section.
+        if ENABLE_NEIGHBOR_BOOST and similarity_matrix.size > 0 and len(all_chunks_in_order) > 0:
+            n_chunks = similarity_matrix.shape[0]
+            n_sections = similarity_matrix.shape[1]
+            # Defensive checks
+            if n_sections > 0:
+                # For each chunk i, consider neighbors [i-w, i+w]
+                for i in range(n_chunks):
+                    total_boost = 0.0
+                    votes = {}
+                    start = max(0, i - NEIGHBOR_WINDOW)
+                    end = min(n_chunks - 1, i + NEIGHBOR_WINDOW)
+                    for j in range(start, end + 1):
+                        if j == i:
+                            continue
+                        # Use confident neighbor placements only
+                        neighbor_chunk = all_chunks_in_order[j]
+                        neighbor_id = neighbor_chunk.get('chunk_id')
+                        if neighbor_id is None:
+                            continue
+                        if j < len(best_match_scores) and best_match_scores[j] >= CONFIDENCE_THRESHOLD:
+                            sec_idx = best_match_indices[j]
+                            votes[sec_idx] = votes.get(sec_idx, 0) + 1
+                    if votes:
+                        # Choose the section with most votes
+                        sec_idx, count = max(votes.items(), key=lambda kv: kv[1])
+                        # Compute boost magnitude bounded by NEIGHBOR_MAX
+                        boost_mag = min(NEIGHBOR_MAX, count * NEIGHBOR_BOOST)
+                        original = similarity_matrix[i, sec_idx]
+                        similarity_matrix[i, sec_idx] = min(1.0, original + boost_mag)
+                        total_boost = boost_mag
+                    # Optional: could log per-chunk boosts at debug level
+                    # log.debug(f"Neighbor boost for chunk {i}: +{total_boost:.3f}")
         return similarity_matrix
 
     def _build_reference_graph(self, all_chunks_in_order):

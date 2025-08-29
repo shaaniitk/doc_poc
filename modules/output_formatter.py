@@ -12,6 +12,7 @@ Key Features:
 
 from jinja2 import Environment, FileSystemLoader # <-- JINJA2 IMPORT
 import os
+from config import SEMANTIC_MAPPING_CONFIG
 
 class HierarchicalOutputFormatter:
     """
@@ -64,6 +65,40 @@ class HierarchicalOutputFormatter:
         # .pop() conveniently removes it so the recursive renderer doesn't see it.
         orphaned_chunks = processed_tree.pop('Orphaned_Content', [])
         
+        # --- Phase 2 UX: Annotate nodes with low-confidence flags for rendering ---
+        def annotate_low_confidence(node):
+            cfg = SEMANTIC_MAPPING_CONFIG
+            threshold = cfg.get('similarity_threshold', 0.6)
+            margin = cfg.get('low_confidence_margin', cfg.get('soft_accept_margin', 0.05))
+        
+            def walk(n):
+                if isinstance(n, dict):
+                    # Count low-confidence/soft-assigned chunks on this node
+                    if 'chunks' in n:
+                        low_count = 0
+                        for ch in n['chunks']:
+                            md = ch.get('metadata', {})
+                            score = md.get('assignment_score', 0.0)
+                            soft = md.get('soft_assigned', False)
+                            # Mark as low-confidence if soft-assigned or within margin below threshold
+                            if soft or (score < threshold and score >= threshold - margin):
+                                low_count += 1
+                        if low_count:
+                            n.setdefault('data', {})['low_confidence_count'] = low_count
+                    # Recurse into subsections if present
+                    subs = n.get('subsections', {})
+                    if isinstance(subs, dict):
+                        for k in list(subs.keys()):
+                            walk(subs[k])
+                elif isinstance(n, list):
+                    for item in n:
+                        walk(item)
+            walk(node)
+            return node
+
+        # Apply low-confidence annotations before rendering
+        processed_tree = annotate_low_confidence(processed_tree)
+
         # The 'render' call passes your Python data to the template and returns the final string
         return template.render(
                     processed_tree=processed_tree,

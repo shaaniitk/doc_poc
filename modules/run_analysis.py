@@ -12,8 +12,8 @@ from .analysis_engine import DocumentAnalyzer
 # Configure logging
 log = logging.getLogger(__name__)
 # The following imports are for re-parsing the documents
-from .file_loader import load_latex_file
-from .chunker import extract_latex_sections, group_chunks_by_section
+from .file_loader import load_file_content
+from .chunker import extract_document_sections, group_chunks_by_section
 from .section_mapper import assign_chunks_to_skeleton
 
 def main(session_path, original_source, aug_source=None, template="bitcoin_paper_hierarchical"):
@@ -31,8 +31,8 @@ def main(session_path, original_source, aug_source=None, template="bitcoin_paper
             
         # To analyze, we need to parse the original and final docs into trees
         def parse_for_analysis(file_path):
-            content = load_latex_file(file_path)
-            chunks = extract_latex_sections(content, source_path=file_path)
+            content = load_file_content(file_path)
+            chunks = extract_document_sections(content, source_path=file_path)
             grouped = group_chunks_by_section(chunks)
             # For analysis, we use the grouped structure directly as a simple "tree"
             return grouped

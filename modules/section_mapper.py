@@ -87,6 +87,7 @@ class SemanticMapper:
     def assign_chunks(self, chunks):
         """
         Assigns a list of chunks to the skeleton sections based on semantic similarity.
+        Now computes top-k candidate sections with scores and distances for all chunks.
         
         Args:
             chunks (list): A list of chunk dictionaries from the ASTChunker.
@@ -110,18 +111,49 @@ class SemanticMapper:
         assignments = self._create_empty_skeleton(self.skeleton)
         assignments['Orphaned_Content'] = [] # For chunks that don't fit well anywhere.
 
-        # 4. Find the best hierarchical path for each chunk.
+        # 4. Find the best hierarchical path for each chunk and compute top-k candidates
         best_match_indices = np.argmax(similarity_matrix, axis=1)
         best_match_scores = np.max(similarity_matrix, axis=1)
 
         # 5. Assign chunks based on the best score and the similarity threshold.
         threshold = self.config['similarity_threshold']
+        top_k = self.config.get('top_k_candidates', 3)
 
         for i, chunk in enumerate(chunks):
             best_path_index = best_match_indices[i]
             score = best_match_scores[i]
             
+            # Compute top-k candidate sections for this chunk
+            chunk_similarities = similarity_matrix[i]  # Get similarities for this chunk
+            # Get indices sorted by similarity (descending)
+            sorted_indices = np.argsort(chunk_similarities)[::-1]
+            
+            # Build candidate sections list
+            candidate_sections = []
+            for j in range(min(top_k, len(sorted_indices))):
+                section_idx = sorted_indices[j]
+                section_path = self.section_paths[section_idx]
+                section_score = float(chunk_similarities[section_idx])
+                section_distance = max(0.0, min(1.0, 1.0 - section_score))
+                
+                candidate_sections.append({
+                    'path': section_path,
+                    'path_str': ' > '.join(section_path),
+                    'score': section_score,
+                    'distance': section_distance
+                })
+            
+            # Store candidate sections and convenience fields in chunk metadata
+            if 'metadata' not in chunk:
+                chunk['metadata'] = {}
+            chunk['metadata']['candidate_sections'] = candidate_sections
             chunk['metadata']['assignment_score'] = float(score)
+            
+            if candidate_sections:
+                chunk['metadata']['nearest_section_suggestion'] = candidate_sections[0]['path_str']
+                chunk['metadata']['distance_to_nearest'] = candidate_sections[0]['distance']
+                if len(candidate_sections) > 1:
+                    chunk['metadata']['top2_gap'] = float(candidate_sections[0]['score'] - candidate_sections[1]['score'])
 
             if score >= threshold:
                 # The best match is now a full hierarchical path
@@ -138,6 +170,9 @@ class SemanticMapper:
                 target_node['chunks'].append(chunk)
                 
             else:
+                if 'metadata' not in chunk:
+                    chunk['metadata'] = {}
+                chunk['metadata']['orphan_reason'] = 'low_similarity'
                 assignments['Orphaned_Content'].append(chunk)
 
         return assignments

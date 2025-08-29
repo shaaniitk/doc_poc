@@ -88,6 +88,14 @@ def main(source, source2=None, combine_strategy="smart", output_format="latex",
         log.info(f"-> Mapped tree structure saved to: {map_output_path}")
         log_entries.append("Stage 2 completed.")
 
+        # --- Phase 5: Mapping Analytics Export ---
+        try:
+            analytics = output_manager.compute_basic_analytics(mapped_tree)
+            analytics_path = output_manager.save_analytics_json("2_mapping_analytics.json", analytics)
+            log.info(f"-> Mapping analytics saved to: {analytics_path}")
+        except Exception as ae:
+            log.warning(f"Analytics computation failed (non-fatal): {ae}")
+
         if stage == "map":
             log.info("--- Pipeline halted after 'map' stage as requested. ---")
             return output_manager.session_path
@@ -99,7 +107,7 @@ def main(source, source2=None, combine_strategy="smart", output_format="latex",
             log.info(f"--- STAGE 3: Combining Documents (Strategy: {combine_strategy}) ---")
             aug_content = load_file_content(source2)
             aug_chunks = extract_document_sections(aug_content, source_path=source2)
-            aug_mapped_tree = mapper.map_chunks(aug_chunks)
+            aug_mapped_tree = mapper.map_chunks(aug_chunks, use_llm_pass=remediate_orphans)
             
             if combine_strategy == "smart":
                 combiner = HierarchicalDocumentCombiner()
