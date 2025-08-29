@@ -1,12 +1,17 @@
 ((# templates/latex_template.tex.j2 #))
 
-((# This template is now self-contained and guarantees a valid preamble. #))
+((# Self-contained LaTeX document with a recursive renderer for the processed tree. #))
 \documentclass{article}
 \usepackage[utf8]{inputenc}
 \usepackage{graphicx}
 \usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage{geometry}
+\geometry{margin=1in}
 
-((# Use the preserved metadata if it exists, otherwise use defaults. #))
+((# Use the preserved metadata if it exists, otherwise use sensible defaults. #))
 \title{((( preserved.title | default('Refactored Document') ))) }
 \author{((( preserved.author | default('Shantanu Misra') ))) }
 \date{((( preserved.date | default('\\today') ))) }
@@ -14,14 +19,36 @@
 \begin{document}
 \maketitle
 
-((# --- The rest of the template for rendering nodes remains the same --- #))
-
 ((* macro render_nodes(node_level, level) *))
-    ...
+((* for title, data in node_level.items() *))
+((* if level == 1 *))
+\section{((( title )))}
+((* elif level == 2 *))
+\subsection{((( title )))}
+((* elif level == 3 *))
+\subsubsection{((( title )))}
+((* elif level == 4 *))
+\paragraph{((( title )))}
+((* else *))
+\subparagraph{((( title )))}
+((* endif *))
+
+((( data.get('processed_content', '') )))
+
+((* if data.get('subsections') *))
+((( render_nodes(data.subsections, level + 1) )))
+((* endif *))
+((* endfor *))
 ((* endmacro *))
 
 ((( render_nodes(processed_tree, 1) )))
 
-...
+((* if orphaned_content and orphaned_content|length > 0 *))
+\section*{Uncategorized Content}
+((* for chunk in orphaned_content *))
+((( chunk.get('content', '') )))
+
+((* endfor *))
+((* endif *))
 
 \end{document}
