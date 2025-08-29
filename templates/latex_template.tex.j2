@@ -1,21 +1,20 @@
-{# templates/latex_template.tex.j2 #}
+((# templates/latex_template.tex.j2 #))
 
-((* if preserved and preserved.latex_preamble *))
-    ((( preserved.latex_preamble | safe )))
-((* else *))
-    {# Fallback to a default preamble if none was preserved #}
-    \documentclass{article}
-    \usepackage[utf8]{inputenc}
-    \usepackage{graphicx}
-    \usepackage{amsmath}
-    \title{Refactored Document}
-    \author{Gemini Refactor Engine}
-    \date{\today}
-    \begin{document}
-    \maketitle
-((* endif *))
+((# This template is now self-contained and guarantees a valid preamble. #))
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+\usepackage{amsmath}
 
-{# --- The rest of the template remains the same --- #}
+((# Use the preserved metadata if it exists, otherwise use defaults. #))
+\title{((( preserved.title | default('Refactored Document') ))) }
+\author{((( preserved.author | default('Shantanu Misra') ))) }
+\date{((( preserved.date | default('\\today') ))) }
+
+\begin{document}
+\maketitle
+
+((# --- The rest of the template for rendering nodes remains the same --- #))
 
 ((* macro render_nodes(node_level, level) *))
     ...

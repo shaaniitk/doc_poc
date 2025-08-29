@@ -166,49 +166,108 @@ class IntelligentMapper:
         return mapped_tree, remaining_orphans
 
     def _run_cohesion_pass(self, mapped_tree, orphans, all_chunks_in_order):
-        # This method's logic is complex but self-contained and correct.
-        if not orphans: return mapped_tree, []
-        
+        """
+        A robust, deterministic pass to "rescue" orphans by checking their neighbors
+        and their graph-based references. This version correctly inserts rescued
+        chunks in their original order.
+        """
+        log.info(f"--- Running Orphan Cohesion Pass for {len(orphans)} orphans ---")
+        if not orphans:
+            return mapped_tree, []
+
+        # --- STAGE 1: Build necessary data structures ---
         reference_graph = self._build_reference_graph(all_chunks_in_order)
+        
         chunk_id_to_path_map = {}
         def build_path_map(node_level, path):
             for title, node_data in node_level.items():
                 if not isinstance(node_data, dict): continue
                 current_path = path + [title]
                 for chunk in node_data.get('chunks', []):
-                    if 'chunk_id' in chunk: chunk_id_to_path_map[chunk['chunk_id']] = current_path
-                if node_data.get('subsections'): build_path_map(node_data['subsections'], current_path)
+                    if 'chunk_id' in chunk:
+                        chunk_id_to_path_map[chunk['chunk_id']] = current_path
+                if node_data.get('subsections'):
+                    build_path_map(node_data['subsections'], current_path)
         build_path_map(mapped_tree, [])
 
-        rescue_missions, remaining_orphans_list, rescued_ids = [], [], set()
+        # --- STAGE 2: Mission Planning ---
+        rescue_missions = []
+        still_orphaned = []
+        
         for orphan in orphans:
             orphan_id = orphan.get('chunk_id')
             if orphan_id is None:
-                remaining_orphans_list.append(orphan); continue
+                still_orphaned.append(orphan)
+                continue
             
-            prev_path = chunk_id_to_path_map.get(orphan_id - 1)
-            next_path = chunk_id_to_path_map.get(orphan_id + 1)
-            if prev_path and prev_path == next_path:
-                rescue_missions.append({'orphan': orphan, 'target_path': prev_path}); rescued_ids.add(orphan_id)
-                log.info(f"  -> Planning rescue for orphan {orphan_id} via Neighbor Cohesion."); continue
-
-            if reference_graph.has_node(orphan_id):
+            rescued = False
+            
+            # Method 1: Neighbor Cohesion (Highest Priority)
+            prev_chunk_path = chunk_id_to_path_map.get(orphan_id - 1)
+            next_chunk_path = chunk_id_to_path_map.get(orphan_id + 1)
+            if prev_chunk_path and prev_chunk_path == next_chunk_path:
+                # Plan to insert this orphan *after* its preceding neighbor
+                mission = {'orphan': orphan, 'target_path': prev_chunk_path, 'insert_after_id': orphan_id - 1}
+                rescue_missions.append(mission)
+                log.info(f"  -> Planning rescue for orphan {orphan_id} via Neighbor Cohesion.")
+                rescued = True
+            
+            # Method 2: Graph Cohesion (if not rescued by neighbor)
+            if not rescued and reference_graph.has_node(orphan_id):
                 for _, target_id in reference_graph.out_edges(orphan_id):
                     target_path = chunk_id_to_path_map.get(target_id)
                     if target_path:
-                        rescue_missions.append({'orphan': orphan, 'target_path': target_path}); rescued_ids.add(orphan_id)
-                        log.info(f"  -> Planning rescue for orphan {orphan_id} via Graph Cohesion (references {target_id})."); break
-        
-        remaining_orphans_list.extend([o for o in orphans if o.get('chunk_id') not in rescued_ids])
+                        # Plan to just append this orphan to the section of the chunk it references
+                        mission = {'orphan': orphan, 'target_path': target_path, 'insert_after_id': None}
+                        rescue_missions.append(mission)
+                        log.info(f"  -> Planning rescue for orphan {orphan_id} via Graph Cohesion (references chunk {target_id}).")
+                        rescued = True
+                        break # One rescue is enough
 
+            if not rescued:
+                still_orphaned.append(orphan)
+
+        log.info(f"  -> Cohesion Pass Analysis complete. Planned {len(rescue_missions)} rescue missions.")
+
+        # --- STAGE 3: Mission Execution ---
         for mission in rescue_missions:
-            orphan_to_rescue, target_path = mission['orphan'], mission['target_path']
-            if self._assign_chunk_to_path(mapped_tree, orphan_to_rescue, target_path):
-                log.info(f"  -> Rescued orphan chunk {orphan_to_rescue.get('chunk_id')} to {' -> '.join(target_path)}")
-            else:
-                remaining_orphans_list.append(orphan_to_rescue)
-        
-        return mapped_tree, remaining_orphans_list
+            orphan_to_rescue = mission['orphan']
+            target_path = mission['target_path']
+            insert_after_id = mission['insert_after_id']
+            
+            try:
+                parent_node = mapped_tree
+                for part in target_path[:-1]:
+                    parent_node = parent_node[part]['subsections']
+                target_node = parent_node[target_path[-1]]
+                
+                # --- THIS IS THE CRITICAL LOGIC ---
+                # Update metadata BEFORE assignment
+                orphan_to_rescue['metadata']['hierarchy_path'] = target_path
+                orphan_to_rescue['parent_section'] = ' -> '.join(target_path)
+                
+                if insert_after_id is not None:
+                    # Find the index of the neighbor and insert after it
+                    neighbor_index = -1
+                    for i, chunk in enumerate(target_node['chunks']):
+                        if chunk.get('chunk_id') == insert_after_id:
+                            neighbor_index = i
+                            break
+                    
+                    if neighbor_index != -1:
+                        target_node['chunks'].insert(neighbor_index + 1, orphan_to_rescue)
+                    else:
+                        # Fallback if neighbor not found (should be rare)
+                        target_node['chunks'].append(orphan_to_rescue)
+                else:
+                    # If rescued by graph, just append to the end of the section
+                    target_node['chunks'].append(orphan_to_rescue)
+
+            except Exception as e:
+                log.error(f"  -> Mission failed for chunk {orphan_to_rescue.get('chunk_id')}: {e}")
+                still_orphaned.append(orphan_to_rescue)
+
+        return mapped_tree, still_orphaned
 
     def _run_graph_boost_pass(self, similarity_matrix, all_chunks_in_order, reference_graph):
         log.info("--- Mapper Pass 1: Graph-Based Confidence Boosting ---")

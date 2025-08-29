@@ -12,7 +12,7 @@ Key Features:
 - Coherence Optimization: Inserts smooth transition sentences between adjacent
   sections and subsections to improve narrative flow.
 """
-
+from .format_enforcer import FormatEnforcer
 from .llm_client import UnifiedLLMClient
 from .error_handler import robust_llm_call
 from config import PROMPTS
@@ -28,6 +28,7 @@ class DocumentPolisher:
     """
     def __init__(self, llm_client: UnifiedLLMClient):
         self.llm_client = llm_client
+        self.format_enforcer = FormatEnforcer("latex")
 
     def polish_tree(self, processed_tree):
         """
@@ -97,7 +98,7 @@ class DocumentPolisher:
             
             if node_data.get('subsections'):
                 self._standardize_terms_recursive(node_data['subsections'], key_terms_list)
-            return node_level
+        return node_level
 
     @robust_llm_call(max_retries=1)
     def _llm_standardize_text(self, text_content, key_terms_list):
@@ -106,7 +107,9 @@ class DocumentPolisher:
             key_terms_list=key_terms_list,
             text_content=text_content
         )
-        return self.llm_client.call_llm([{"role": "user", "content": prompt}])
+        raw_output = self.llm_client.call_llm([{"role": "user", "content": prompt}])
+        clean_output, _ = self.format_enforcer.enforce_format(raw_output)
+        return clean_output
 
     # --- Pass 2: Coherence Optimization (Transitions) ---
 
@@ -159,4 +162,6 @@ class DocumentPolisher:
             current_section_title=current_title,
             current_section_beginning=current_content[:300] # First 300 chars
         )
-        return self.llm_client.call_llm([{"role": "user", "content": prompt}])
+        raw_output = self.llm_client.call_llm([{"role": "user", "content": prompt}])
+        clean_output, _ = self.format_enforcer.enforce_format(raw_output)
+        return clean_output

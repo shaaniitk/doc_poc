@@ -125,7 +125,6 @@ class ASTChunker:
         """
         preamble_nodes = []
         body_nodelist = []
-
         # Find the document environment node in the top-level AST
         doc_env_node = None
         for node in self.nodelist:
@@ -135,8 +134,10 @@ class ASTChunker:
             else:
                 preamble_nodes.append(node)
         
+        preserved_metadata = self._extract_preamble_metadata(preamble_nodes)
+        
         # Preserve the preamble as a verbatim string
-        preserved_preamble = ''.join([n.latex_verbatim() for n in preamble_nodes]).strip()
+        #preserved_preamble = ''.join([n.latex_verbatim() for n in preamble_nodes]).strip()
 
         # If a document environment was found, get its content
         if doc_env_node:
@@ -151,7 +152,24 @@ class ASTChunker:
         # Start the recursive chunking on ONLY the body nodes
         content_chunks = self._recursive_chunk_parser(body_nodelist, current_hierarchy=[])
         
-        return content_chunks, preserved_preamble
+        return content_chunks, preserved_metadata
+    
+    def _extract_preamble_metadata(self, preamble_nodes):
+        """
+        Finds specific commands like \\title, \\author, \\date in the preamble
+        and extracts their string content.
+        """
+        metadata = {
+            'title': 'Refactored Document', # Default values
+            'author': 'ShantanuMisra',
+            'date': r'\today'
+        }
+        for node in preamble_nodes:
+            if node.isNodeType(LatexMacroNode) and node.macroname in ['title', 'author', 'date']:
+                if node.nodeargs:
+                    # Get the raw text content of the command's argument
+                    metadata[node.macroname] = self._get_node_text(node.nodeargs[0])
+        return metadata
 
     def _recursive_chunk_parser(self, nodelist, current_hierarchy):
 
@@ -250,7 +268,7 @@ def extract_document_sections(content, source_path):
     _, extension = os.path.splitext(source_path)
     initial_chunks = []
     preserved_data = {} # Initialize an empty dict for preserved data
-
+     
     # --- 1. Format-Specific Initial Chunking ---
     if extension in ['.tex', '.txt']:
         log.info(f"-> Using ASTChunker for {extension} file.")
