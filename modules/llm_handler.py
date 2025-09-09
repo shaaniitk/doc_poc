@@ -32,6 +32,7 @@ class HierarchicalProcessingAgent:
         self.format_enforcer = FormatEnforcer(output_format)
         self.semantic_graph = None # To store the graph
         self.all_chunks_map = {} # For quick lookup
+        self.kg_processor = kg_processor
             # --- Initialize LangChain Memory ---
         # 1. Get the model name from the central config.
         model_name = SEMANTIC_MAPPING_CONFIG['model']
@@ -68,17 +69,22 @@ class HierarchicalProcessingAgent:
         return self._recursive_process_node(document_tree, parent_context="", path=[], generative_context=generative_context)
 
     def _recursive_process_node(self, current_level_nodes, parent_context, path, generative_context=None):
+        """
+        The core recursive method. It traverses the document tree, dynamically creating
+        subsections, gathering rich context from multiple sources, and applying a multi-pass
+        LLM strategy (refactor + critique) to each node.
+        """
         processed_level = {}
         for title, node_data in current_level_nodes.items():
             if not isinstance(node_data, dict): continue
 
             current_path = path + [title]
-            
-            # --- REINSTATED: Dynamic Subsection Generation ---
-            # If a node is marked as dynamic, first create its subsections
+
+            # --- Feature: Dynamic Subsection Generation ---
             if node_data.get('dynamic') and not generative_context:
                 self._dynamically_generate_subsections(node_data, title)
 
+            # Determine the source content for this node
             if generative_context:
                 node_content = generative_context
                 log.info(f"  Generatively processing node: {' -> '.join(current_path)}")
@@ -86,41 +92,53 @@ class HierarchicalProcessingAgent:
                 log.info(f"  Refactoring node: {' -> '.join(current_path)}")
                 node_content = "\n\n".join([chunk['content'] for chunk in node_data.get('chunks', [])])
 
-            node_chunks = node_data.get('chunks', [])
-            semantic_context = self._get_semantic_context_for_node(node_chunks)
-            # --- END SEMANTIC CONTEXT ---
-            # --- NEW: Load relevant memories before processing ---
-          
-                # --- END Memory Loading ---
-
-
             if node_content:
+                # --- Feature: Rich Context Gathering ---
+                
+                # 1. Semantic Context from Knowledge Graph
+                semantic_context = "N/A"
+                node_chunks = node_data.get('chunks', [])
+                if node_chunks and self.kg_processor:
+                    first_chunk_id = node_chunks[0].get('chunk_id')
+                    if first_chunk_id:
+                        neighbor_chunks = self.kg_processor.find_semantic_neighbors(first_chunk_id)
+                        context_parts = [c['content'][:250] + "..." for c in neighbor_chunks]
+                        semantic_context = "\n---\n".join(context_parts) if context_parts else "N/A"
 
+                # 2. Long-Range Memory Context
                 relevant_memories = self.memory.load_memory_variables({"prompt": node_content})
                 memory_context = relevant_memories.get('history', "No relevant memories yet.")
-                context = {
-                    "node_path": " -> ".join(current_path), "global_context": self.global_context,
-                    "parent_context": parent_context, "node_content": node_content,
-                    "semantic_context": semantic_context, "memory_context": memory_context
-                }
-                refactored_content = self._strategy_refactor_content(context, node_data.get('prompt', ''))
                 
-           
+                # Build the full context dictionary for the prompt
+                context = {
+                    "node_path": " -> ".join(current_path),
+                    "global_context": self.global_context,
+                    "parent_context": parent_context,
+                    "semantic_context": semantic_context,
+                    "memory_context": memory_context,
+                    "node_content": node_content
+                }
+
+                # --- Feature: Multi-Pass LLM Processing ---
+                
+                # Pass 1: Initial Refactoring
+                refactored_content = self._strategy_refactor_content(context, node_data)
+                
+                # Pass 2: Self-Critique and Refinement
                 if 'self_critique_and_refine' in PROMPTS:
                     log.info(f"    -> Running self-critique pass for node: {' -> '.join(current_path)}")
                     refactored_content = self._llm_self_critique_pass(context, refactored_content)
 
-                #SAVE Memory
+                # --- Storing Result and Memory ---
+                node_data['processed_content'] = refactored_content
                 self.memory.save_context(
                     {"input": f"Refactor content for section: {title}"}, 
                     {"output": refactored_content}
                 )
-                # --- END Memory Saving ---
-
-                node_data['processed_content'] = refactored_content
             else:
                 node_data['processed_content'] = ""
 
+            # Recurse into subsections
             if node_data.get('subsections'):
                 processed_subsections = self._recursive_process_node(
                     node_data['subsections'], parent_context=node_data.get('processed_content', ''),
@@ -129,8 +147,9 @@ class HierarchicalProcessingAgent:
                 node_data['subsections'] = processed_subsections
             
             processed_level[title] = node_data
+        
         return processed_level
-
+        
     def _flatten_tree_to_chunks(self, node_level):
         chunks = []
         for node_data in node_level.values():
@@ -163,7 +182,8 @@ class HierarchicalProcessingAgent:
 
     @robust_llm_call(max_retries=2)
     def _strategy_refactor_content(self, context, node_prompt):
-        system_prompt = node_prompt or "You are a professional technical editor."
+        persona_prompts = node_data.get('persona_prompts', {})
+        system_prompt = persona_prompts.get('default', node_data.get('prompt', 'You are a professional technical editor.')) 
         full_prompt_text = f"{system_prompt}\n\n{PROMPTS['hierarchical_refactor']}"
         prompt_template = PromptTemplate(input_variables=list(context.keys()), template=full_prompt_text)
         chain = LLMChain(llm=self.langchain_llm, prompt=prompt_template)

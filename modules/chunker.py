@@ -318,10 +318,17 @@ def extract_document_sections(content, source_path):
                 processed_chunks.append(chunk)
     else:
         processed_chunks = initial_chunks
-
-    # Centralized ID Assignment
+    
+     # --- NEW: Centralized ID and Metadata Assignment ---
+    total_chunks = len(processed_chunks)
     for i, chunk in enumerate(processed_chunks):
         chunk['chunk_id'] = i
+        
+        # --- NEW METADATA INJECTION ---
+        chunk['metadata']['normalized_position'] = i / max(1, total_chunks - 1)
+        chunk['metadata']['prev_chunk_id'] = i - 1 if i > 0 else None
+        chunk['metadata']['next_chunk_id'] = i + 1 if i < total_chunks - 1 else None
+    # Centralized ID Assignment
     
     log.info(f"-> Final chunk count after post-processing: {len(processed_chunks)}")
     

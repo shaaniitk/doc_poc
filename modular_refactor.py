@@ -18,7 +18,9 @@ import argparse
 import logging
 import re
 
-# --- Import all state-of-the-art modules ---
+from modules.knowledge_graph_processor import KnowledgeGraphProcessor
+from sentence_transformers import SentenceTransformer
+from config import SEMANTIC_MAPPING_CONFIG
 from modules.file_loader import load_file_content
 from modules.chunker import extract_document_sections
 from modules.intelligent_mapper import IntelligentMapper
@@ -61,6 +63,11 @@ def main(source, source2=None, combine_strategy="smart", output_format="latex",
         log_entries.append("Entering Stage 1: Parsing & Chunking.")
         content = load_file_content(source)
         all_chunks_from_parser, preserved_data = extract_document_sections(content, source_path=source)
+        log.info("--- STAGE 1.2: KNOWLEDGE GRAPH CREATION ---")
+        # We only need to load the embedding model once for the whole pipeline
+        embedding_model = SentenceTransformer(SEMANTIC_MAPPING_CONFIG['model'])
+        kg_processor = KnowledgeGraphProcessor(all_chunks_from_parser, embedding_model)
+        kg_processor.build_graphs() # Build both graphs
         chunk_output_path = output_manager.save_json_output("1_chunk_output.json", all_chunks_from_parser)
         log.info(f"-> Found {len(all_chunks_from_parser)} initial chunks.")
         log.info(f"-> Chunking results saved to: {chunk_output_path}")
@@ -82,13 +89,13 @@ def main(source, source2=None, combine_strategy="smart", output_format="latex",
         # --- Stage 2: Intelligent Mapping ---
         log.info("--- STAGE 2: INTELLIGENT MAPPING ---")
         log_entries.append("Entering Stage 2: Intelligent Mapping.")
-        mapper = IntelligentMapper(template_name=template, template_object=enhanced_template) # No flag in the constructor
+        mapper = IntelligentMapper(template_name=template, template_object=enhanced_template, kg_processor=kg_processor) # No flag in the constructor
         mapped_tree = mapper.map_chunks(all_chunks_from_parser, use_llm_pass=remediate_orphans) # Flag goes here
         map_output_path = output_manager.save_json_output("2_mapped_tree.json", mapped_tree)
         log.info(f"-> Mapped tree structure saved to: {map_output_path}")
         log_entries.append("Stage 2 completed.")
 
-        # --- Phase 5: Mapping Analytics Export ---
+
         try:
             analytics = output_manager.compute_basic_analytics(mapped_tree)
             analytics_path = output_manager.save_analytics_json("2_mapping_analytics.json", analytics)
@@ -130,7 +137,7 @@ def main(source, source2=None, combine_strategy="smart", output_format="latex",
         # --- Stage 5: Core LLM Processing ---
         log.info("--- STAGE 5: Core Document Processing ---")
         llm_client = UnifiedLLMClient()
-        agent = HierarchicalProcessingAgent(llm_client, output_format)
+        agent = HierarchicalProcessingAgent(llm_client, output_format,kg_processor=kg_processor)
         
         # Phase 1: Process main content
         processed_main_tree = agent.process_tree(main_content_tree)
@@ -139,10 +146,27 @@ def main(source, source2=None, combine_strategy="smart", output_format="latex",
         processed_generative_nodes = {}
         if generative_nodes:
             log.info("-> Creating generative content (Summary, etc.)...")
-            temp_formatter = HierarchicalOutputFormatter("latex")
-            full_processed_content = temp_formatter.format_document(processed_main_tree)
-            processed_generative_nodes = agent.process_tree(generative_nodes, generative_context=full_processed_content)
+            semantic_graph = agent.semantic_graph
+            if semantic_graph and semantic_graph.nodes:
+                # 1. Calculate the centrality of each chunk
+                centrality = nx.degree_centrality(semantic_graph)
+                # 2. Sort chunks by their importance and get the top 10
+                #sorted_chunks = sorted(centrality.items(), key=lambda item: item[1], reverse=True)
+                #core_concept_ids = [chunk_id for chunk_id, score in sorted_chunks[:10]]
+                core_concept_chunks = kg_processor.get_core_concept_chunks()
+                # 3. Build a focused context from only the most important chunks
+                core_concept_texts = [c['content'] for c in core_concept_chunks]
+                generative_context = "\n\n...\n\n".join(core_concept_texts)
+                log.info(f"-> Built a focused generative context from {len(core_concept_texts)} core concepts.")
+           
+            else:
+                # Fallback to the old method if the graph is empty
+                temp_formatter = HierarchicalOutputFormatter("latex")
+                generative_context = temp_formatter.format_document(processed_main_tree.copy())    
+
+        processed_generative_nodes = agent.process_tree(generative_nodes, generative_context=generative_context)
         
+              
         # Recombine all parts
         final_tree = {**processed_generative_nodes, **processed_main_tree}
         if orphaned_chunks:

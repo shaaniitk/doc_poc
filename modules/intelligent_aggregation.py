@@ -18,6 +18,7 @@ from .error_handler import robust_llm_call
 from config import PROMPTS
 import copy
 import logging
+from config import QUANT_FINANCE_GLOSSARY
 
 # Configure logging
 log = logging.getLogger(__name__)
@@ -102,11 +103,16 @@ class DocumentPolisher:
 
     @robust_llm_call(max_retries=1)
     def _llm_standardize_text(self, text_content, key_terms_list):
+
+        glossary_str = f"Approved Key Terms: {QUANT_FINANCE_GLOSSARY['key_terms']}\n"
+        glossary_str += f"Approved Acronyms: {QUANT_FINANCE_GLOSSARY['acronyms']}"
+
         """LLM call to standardize a single piece of text."""
         prompt = PROMPTS['term_standardization'].format(
-            key_terms_list=key_terms_list,
-            text_content=text_content
-        )
+                                key_terms_list=key_terms_list,
+                                domain_glossary=glossary_str, # Pass the new variable
+                                text_content=text_content
+                            )
         raw_output = self.llm_client.call_llm([{"role": "user", "content": prompt}])
         clean_output, _ = self.format_enforcer.enforce_format(raw_output)
         return clean_output

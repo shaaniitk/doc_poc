@@ -1,12 +1,3 @@
-"""
-State-of-the-Art Hierarchical Document Combination & Augmentation Engine.
-
-This module operates on hierarchical document trees (ASTs), enabling sophisticated
-structural merging and content integration. It moves beyond simple chunk pasting
-to perform intelligent "structure grafting" and "content weaving."
-
-Prompts are imported from the central config file for maintainability.
-"""
 import copy
 from .llm_client import UnifiedLLMClient
 from .error_handler import ProcessingError, robust_llm_call
@@ -23,7 +14,7 @@ class HierarchicalDocumentCombiner:
     def __init__(self):
         self.llm_client = UnifiedLLMClient()
 
-    def combine_documents(self, base_doc_tree, aug_doc_tree):
+    def combine_documents(self, base_doc_tree, aug_doc_tree, strategy="weave"):
         """
         Main entry point for combining two document trees.
         """
@@ -31,28 +22,28 @@ class HierarchicalDocumentCombiner:
             raise ProcessingError("Document inputs for combiner must be hierarchical trees (dictionaries).")
 
         combined_tree = copy.deepcopy(base_doc_tree)
-        self._weave_overlapping_content(combined_tree, aug_doc_tree)
+        self._weave_overlapping_content(combined_tree, aug_doc_tree,stratgy)
         self._graft_new_structures(combined_tree, aug_doc_tree)
         return combined_tree
 
-    def _weave_overlapping_content(self, base_node, aug_node):
+    def _weave_overlapping_content(self, base_node, aug_node,strategy):
         """
         Recursively traverses both trees and weaves content for sections that exist in both.
         """
         for section_name, aug_section_data in aug_node.items():
             if section_name in base_node:
-                base_chunks = base_node[section_name].get('chunks', [])
-                aug_chunks = aug_section_data.get('chunks', [])
+                base_chunks = base_node[section_name].get('processed_content', '') # Use processed content
+                aug_chunks = aug_section_data.get('processed_content', '')
 
                 if base_chunks and aug_chunks:
-                    log.info(f"Weaving content for overlapping section: '{section_name}'")
-                    weaved_content = self._llm_weave_chunks(base_chunks, aug_chunks, section_name)
+                    log.info(f"Augmenting content for section: '{section_name}' with strategy: '{strategy}'")
                     
-                    base_node[section_name]['chunks'] = [{
-                        'type': 'weaved_paragraph',
-                        'content': weaved_content,
-                        'metadata': {'source': 'weaved'}
-                    }]
+                    # --- NEW LOGIC ---
+                    weaved_content = self._llm_augment_content(base_chunks, aug_chunks, section_name, strategy)
+                    
+                    # Replace the base content with the new, augmented content
+                    base_node[section_name]['processed_content'] = weaved_content
+                    # --- END NEW LOGIC ---
 
                 if 'subsections' in base_node[section_name] and 'subsections' in aug_section_data:
                     self._weave_overlapping_content(
@@ -61,20 +52,19 @@ class HierarchicalDocumentCombiner:
                     )
 
     @robust_llm_call(max_retries=2)
-    def _llm_weave_chunks(self, base_chunks, aug_chunks, section_name):
-        """
-        Uses an LLM to intelligently weave content from two sources, using a prompt from config.
-        """
-        original_content = "\n\n".join([c['content'] for c in base_chunks])
-        augmentation_content = "\n\n".join([c['content'] for c in aug_chunks])
+    def _llm_augment_content(self, base_content, aug_content, section_name, strategy):
 
-        # Format the prompt from the config file with dynamic content
-        prompt = PROMPTS['content_weaving'].format(
+        if strategy == "contrast":
+            prompt_key = 'content_augmentation_contrast'
+        else: # Default to 'weave'
+            prompt_key = 'content_weaving'
+
+        prompt = PROMPTS[prompt_key].format(
             section_name=section_name,
-            original_content=original_content,
-            augmentation_content=augmentation_content
+            original_content=base_content,
+            augmentation_content=aug_content
         )
-        return self.llm_client.call_llm(prompt, max_tokens=3000)
+        return self.llm_client.call_llm([{"role": "user", "content": prompt}], max_tokens=3000)
 
     def _graft_new_structures(self, base_node, aug_node):
         """

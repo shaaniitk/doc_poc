@@ -3,7 +3,8 @@
 # --- NEW: Configuration for LangChain-based Chunkers ---
 LANGCHAIN_CHUNK_CONFIG = {
     'md_chunk_size': 1500,
-    'md_chunk_overlap': 150,
+    'md_chunk_overlap': 200,
+    
 }
 
 
@@ -229,6 +230,46 @@ DOCUMENT_TEMPLATES = {
         }
     },
 
+    "quant_finance_research_paper": {
+    "1. Abstract": {
+        "generative": True,
+        "description": "A high-level summary of the paper's methodology, findings, and implications.",
+        "persona_prompts": {
+            "default": """
+                You are a senior quantitative researcher summarizing a complex financial model for an academic journal.
+                Focus on the core contribution, the methodology, and the key empirical results.
+            """
+        }
+    },
+    "2. Literature Review": {
+        "description": "Discusses prior academic work, models like Black-Scholes, GARCH, or Fama-French, and identifies the gap this paper fills.",
+        "persona_prompts": {
+            "default": """
+                You are a finance academic with deep knowledge of historical models.
+                Refactor the text to position the paper within the existing literature, highlighting its novel contribution.
+            """,
+            "consistency_check": """
+                You are a meticulous fact-checker. Review the following text. Does it accurately represent the contributions of the cited papers?
+                Are there any mischaracterizations of well-known models like Black-Scholes or CAPM?
+            """
+        }
+    },
+    "3. Methodology & Model Specification": {
+        "description": "The mathematical core of the paper. Details the stochastic processes, equations, and statistical methods used.",
+        "persona_prompts": {
+            "default": """
+                You are a mathematician and statistician. Refactor the following text for maximum precision and clarity.
+                Ensure all equations are correctly referenced and the derivation of the model is logically sound.
+            """,
+            "notation_check": """
+                You are a LaTeX typesetting expert specializing in mathematical notation.
+                Review the following text. Is the notation for variables (e.g., σ for volatility, r for risk-free rate) consistent and standard?
+                Correct any inconsistencies.
+            """
+        }
+    }
+    },
+
     "dynamic_subsection_identifier": """
     You are a document structuring AI. Your task is to analyze a large block of text from a "{parent_section_title}" section and identify all the distinct, logical subsections within it.
 Content to Analyze:
@@ -383,7 +424,10 @@ You are a domain expert analyzing a technical document. Your task is to extract 
 
 'term_standardization': """
     You are a silent text processor. Your ONLY job is to rewrite the following text to use the provided key terms consistently.
-
+     
+     **Official Document Glossary:**
+    {domain_glossary}
+    
     **Key Terms List:**
     {key_terms_list}
 
@@ -515,7 +559,45 @@ Refactored LaTeX Content:
         ---
 
         **Generated Description for '{section_title}':**
-    """
+    """,
+
+'content_augmentation_contrast': """
+    You are a research analyst comparing two academic papers on the same topic.
+    
+    **Content from the Base Document (Document A) on '{section_name}':**
+    ---
+    {original_content}
+    ---
+
+    **Content from the Augmentation Document (Document B) on '{section_name}':**
+    ---
+    {augmentation_content}
+    ---
+
+    **Your Task:**
+    Rewrite the content for this section by integrating the insights from both documents.
+    Your primary goal is to **highlight the differences**. Start by presenting the view from Document A, then introduce the perspective from Document B using phrases like "In contrast," "An alternative approach suggests," or "However, [Author B] proposes...".
+    Synthesize the two viewpoints into a coherent, academic discussion.
+""",
+
+'suggest_cross_reference': """
+    You are a helpful academic editor.
+    The following two text excerpts from a document are highly related in meaning but are not explicitly linked.
+    
+    **Source Excerpt (from section '{source_section}'):**
+    ---
+    {source_content}
+    ---
+
+    **Related Excerpt (from section '{target_section}'):**
+    ---
+    {target_content}
+    ---
+
+    Your task is to rewrite the final sentence of the "Source Excerpt" to include a natural, academic-style cross-reference to the target section.
+    For example: "...which is closely related to the methodology discussed in Section {target_section}."
+    Respond with ONLY the rewritten sentence.
+""",
 
 }
 
@@ -545,4 +627,20 @@ STRICT RULES:
 - Use - item for lists, NOT \\begin{itemize}
 - Use ```language for code blocks
 - Convert LaTeX equations to $...$ or $$...$$"""
+}
+
+
+
+QUANT_FINANCE_GLOSSARY = {
+    "key_terms": [
+        "Stochastic Volatility", "Monte Carlo Simulation", "Risk-Neutral Pricing",
+        "Arbitrage Opportunity", "Efficient Frontier", "Capital Asset Pricing Model (CAPM)",
+        "Black-Scholes-Merton (BSM)", "Geometric Brownian Motion (GBM)"
+    ],
+    "acronyms": {
+        "VaR": "Value at Risk",
+        "CVaR": "Conditional Value at Risk",
+        "HFT": "High-Frequency Trading",
+        "APT": "Arbitrage Pricing Theory"
+    }
 }

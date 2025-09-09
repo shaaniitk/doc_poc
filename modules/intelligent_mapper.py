@@ -16,12 +16,7 @@ log = logging.getLogger(__name__)
 
 
 class IntelligentMapper:
-    """
-    A state-of-the-art, multi-pass chunk mapping engine. It uses a combination of
-    semantic similarity, graph-based structural analysis, and LLM-powered remediation
-    to assign document chunks to a hierarchical template.
-    """
-    def __init__(self, template_name="bitcoin_paper_hierarchical", template_object=None):
+    def __init__(self, template_name="bitcoin_paper_hierarchical", template_object=None, kg_processor=None):
         if template_object:
             self.template_name = template_name
             self.skeleton = template_object
@@ -33,118 +28,104 @@ class IntelligentMapper:
             raise ValueError(f"Template '{template_name}' not found.")
             
         self.config = SEMANTIC_MAPPING_CONFIG
+        self.kg_processor = kg_processor
+        self.embedding_model = self.kg_processor.embedding_model
+        
         self.llm_client = UnifiedLLMClient()
         self.langchain_llm = LangChainLLM(client=self.llm_client)
-        self.embedding_model = SentenceTransformer(self.config['model'])
         
         self.flat_skeleton = self._flatten_skeleton_recursive(self.skeleton, [])
         self.section_paths = [s['path'] for s in self.flat_skeleton]
         self.section_descriptions = [s['description'] for s in self.flat_skeleton]
         self.section_embeddings = self.embedding_model.encode(self.section_descriptions, show_progress_bar=False)
 
-    # --- MAIN PUBLIC METHOD ---
+    # --- MAIN ORCHESTRATOR METHOD ---
     def map_chunks(self, all_chunks_in_order, use_llm_pass=False):
         """
-        Main entry point to run the full, multi-pass mapping pipeline.
+        Main entry point that orchestrates the full, multi-pass mapping pipeline.
         """
-        # --- Pre-computation ---
-        reference_graph = self._build_reference_graph(all_chunks_in_order)
-        chunk_contents = [c['content'] for c in all_chunks_in_order]
-        chunk_embeddings = self.embedding_model.encode(chunk_contents, show_progress_bar=False)
-        similarity_matrix = cosine_similarity(chunk_embeddings, self.section_embeddings)
+        # Stage 1: Initial Calculations
+        similarity_matrix = cosine_similarity(self.kg_processor.embeddings, self.section_embeddings)
         
-        # --- Pass 1: Graph-Boost Pass ---
-        boosted_similarity_matrix = self._run_graph_boost_pass(similarity_matrix, all_chunks_in_order, reference_graph)
-
-        # --- Final Decision Making ---
-        log.info("--- Final Mapping Decision based on Boosted Scores ---")
-        mapped_tree = self._create_empty_skeleton(self.skeleton)
-        unmapped_chunks = []
+        # Stage 2: Iterative Mapping
+        chunk_assignments, unmapped_indices = self._run_high_confidence_pass(all_chunks_in_order, similarity_matrix)
+        refined_matrix = self._run_contextual_refinement_pass(similarity_matrix, chunk_assignments, all_chunks_in_order, unmapped_indices)
         
-        best_match_indices = np.argmax(boosted_similarity_matrix, axis=1)
-        best_match_scores = np.max(boosted_similarity_matrix, axis=1)
-        threshold = self.config['similarity_threshold']
-        soft_margin = self.config.get('soft_accept_margin', 0.05)
-        gap_margin = self.config.get('gap_accept_margin', 0.1)
-        top_k = self.config.get('top_k_candidates', 3)
-
-        for i, chunk in enumerate(all_chunks_in_order):
-            best_path_index = best_match_indices[i]
-            score = best_match_scores[i]
-            if 'metadata' not in chunk:
-                chunk['metadata'] = {}
-            chunk['metadata']['assignment_score'] = float(score)
-
-            # Compute secondary score for gap heuristic
-            row = boosted_similarity_matrix[i]
-            if row.shape[0] >= 2:
-                sorted_scores = np.sort(row)
-                second_best = float(sorted_scores[-2])
-            else:
-                second_best = 0.0
-            top_gap = float(score - second_best)
-            chunk['metadata']['top2_gap'] = top_gap
-
-            # Compute top-k candidate sections (for analytics/UX) from boosted scores
-            sorted_indices = np.argsort(row)[::-1]
-            candidate_sections = []
-            for j in range(min(top_k, len(sorted_indices))):
-                section_idx = int(sorted_indices[j])
-                section_path = self.section_paths[section_idx]
-                section_score = float(row[section_idx])
-                section_distance = max(0.0, min(1.0, 1.0 - section_score))
-                
-                candidate_sections.append({
-                    'path': section_path,
-                    'path_str': ' > '.join(section_path),
-                    'score': section_score,
-                    'distance': section_distance
-                })
-            
-            if 'metadata' not in chunk:
-                chunk['metadata'] = {}
-            chunk['metadata']['candidate_sections'] = candidate_sections
-            chunk['metadata']['assignment_score'] = float(score)
-            
-            if candidate_sections:
-                chunk['metadata']['nearest_section_suggestion'] = candidate_sections[0]['path_str']
-                chunk['metadata']['distance_to_nearest'] = candidate_sections[0]['distance']
-            
-            # Gap heuristic
-            if len(candidate_sections) >= 2:
-                second_best = candidate_sections[1]['score']
-            else:
-                second_best = 0.0
-            top_gap = float(score - second_best)
-            chunk['metadata']['top2_gap'] = top_gap
-            
-            if score >= threshold:
-                best_path = self.section_paths[best_path_index]
-                self._assign_chunk_to_path(mapped_tree, chunk, best_path)
-            elif score >= (threshold - soft_margin) or top_gap >= gap_margin:
-                # Soft-accept borderline match to reduce orphaning; mark as low-confidence
-                best_path = self.section_paths[best_path_index]
-                chunk['metadata']['soft_assigned'] = True
-                chunk['metadata']['assignment_confidence'] = 'low'
-                self._assign_chunk_to_path(mapped_tree, chunk, best_path)
-            else:
-                unmapped_chunks.append(chunk)
+        # Stage 3: Final Assignment
+        mapped_tree, unmapped_chunks = self._run_final_assignment(all_chunks_in_order, refined_matrix)
         
-        log.info(f"  -> Initial mapping complete. Mapped: {len(all_chunks_in_order) - len(unmapped_chunks)}. Unmapped: {len(unmapped_chunks)}.")
-
-        # --- Pass 2 & 3: Orphan Handling (LLM and Cohesion) ---
+        # Stage 4: Orphan Handling
         remaining_orphans = unmapped_chunks
         if unmapped_chunks and use_llm_pass:
-            log.info(f"--- Mapper Pass 2: LLM-Powered Remediation for {len(unmapped_chunks)} Orphan(s) ---")
             mapped_tree, remaining_orphans = self._run_llm_pass_langchain(mapped_tree, unmapped_chunks)
 
         if remaining_orphans:
-            log.info(f"--- Mapper Pass 3: Contextual Cohesion for {len(remaining_orphans)} Orphan(s) ---")
             mapped_tree, final_orphans = self._run_cohesion_pass(mapped_tree, remaining_orphans, all_chunks_in_order)
             if final_orphans:
                 mapped_tree['Orphaned_Content'] = final_orphans
         
         return mapped_tree
+
+    # --- SPECIALIZED HELPER METHODS ---
+
+    def _run_high_confidence_pass(self, all_chunks, similarity_matrix):
+        """Round 1: Finds the initial, most obvious chunk assignments."""
+        log.info("--- Iterative Mapping Round 1: High-Confidence Pass ---")
+        threshold = self.config.get('high_confidence_threshold', 0.80)
+        
+        assignments = {}
+        unmapped_indices = list(range(len(all_chunks)))
+        best_matches = np.argmax(similarity_matrix, axis=1)
+        
+        for i in list(unmapped_indices):
+            score = similarity_matrix[i, best_matches[i]]
+            if score >= threshold:
+                chunk_id = all_chunks[i]['chunk_id']
+                assignments[chunk_id] = self.section_paths[best_matches[i]]
+                unmapped_indices.remove(i)
+        
+        log.info(f"  -> Round 1 complete. Mapped: {len(assignments)}. Remaining: {len(unmapped_indices)}.")
+        return assignments, unmapped_indices
+
+    def _run_contextual_refinement_pass(self, matrix, assignments, all_chunks, unmapped_indices):
+        """Round 2: Uses confident assignments to boost scores of their neighbors."""
+        log.info("--- Iterative Mapping Round 2: Contextual Refinement Pass ---")
+        boost = self.config.get('refinement_boost', 0.20)
+
+        for i in unmapped_indices:
+            chunk = all_chunks[i]
+            prev_path = assignments.get(chunk['metadata'].get('prev_chunk_id'))
+            next_path = assignments.get(chunk['metadata'].get('next_chunk_id'))
+
+            if prev_path and prev_path == next_path:
+                try:
+                    target_index = self.section_paths.index(prev_path)
+                    original_score = matrix[i, target_index]
+                    matrix[i, target_index] = min(1.0, original_score + boost)
+                    log.info(f"  -> Boosting chunk {chunk['chunk_id']} based on neighbor context.")
+                except ValueError:
+                    continue
+        return matrix
+
+    def _run_final_assignment(self, all_chunks, refined_matrix):
+        """Makes the final assignment decisions based on the refined scores."""
+        log.info("--- Final Assignment Pass ---")
+        mapped_tree = self._create_empty_skeleton(self.skeleton)
+        orphans = []
+        threshold = self.config['similarity_threshold']
+        best_matches = np.argmax(refined_matrix, axis=1)
+
+        for i, chunk in enumerate(all_chunks):
+            best_path_index = best_matches[i]
+            score = refined_matrix[i, best_path_index]
+            chunk['metadata']['assignment_score'] = float(score)
+
+            if score >= threshold:
+                if not self._assign_chunk_to_path(mapped_tree, chunk, self.section_paths[best_path_index]):
+                    orphans.append(chunk)
+            else:
+                orphans.append(chunk)
+        return mapped_tree, orphans
 
     # --- HELPER PASSES AND METHODS ---
 
@@ -486,100 +467,45 @@ class IntelligentMapper:
 
         return mapped_tree, still_orphaned
 
-    def _run_graph_boost_pass(self, similarity_matrix, all_chunks_in_order, reference_graph):
+    def _run_graph_boost_pass(self, similarity_matrix, all_chunks_in_order):
         """
-        Pass 1: Confidence boosting prior to final assignment.
-        - Boosts similarity toward sections referenced by confident neighbors via the reference graph.
-        - Optionally applies a sliding-window neighbor boost to promote local cohesion.
-        Safe: caps boosted scores at 1.0 and never reduces any score.
+        Adjusts the semantic similarity matrix by boosting scores based on the
+        pre-built structural graph from the KnowledgeGraphProcessor.
         """
-        log.info("--- Mapper Pass 1: Graph-Based Confidence Boosting ---")
-        # Base thresholds
+        log.info("--- Mapper Pass: Graph-Based Confidence Boosting ---")
+        
+        # Get the structural graph directly from the processor instance
+        reference_graph = self.kg_processor.structural_graph
+        if not reference_graph:
+            log.warning("Structural graph not available in KG Processor. Skipping graph boost pass.")
+            return similarity_matrix
+
         CONFIDENCE_THRESHOLD = self.config.get('confidence_threshold', 0.6)
         BOOST_AMOUNT = self.config.get('boost_amount', 0.3)
-        # Neighbor window boosting (configurable)
-        ENABLE_NEIGHBOR_BOOST = self.config.get('enable_neighbor_window_boost', True)
-        NEIGHBOR_WINDOW = int(self.config.get('neighbor_window', 2))
-        NEIGHBOR_BOOST = float(self.config.get('neighbor_boost_amount', 0.05))
-        NEIGHBOR_MAX = float(self.config.get('neighbor_max_boost', 0.2))
-
-        # Compute current best matches
+        
         best_match_indices = np.argmax(similarity_matrix, axis=1)
         best_match_scores = np.max(similarity_matrix, axis=1)
+        
         confident_placements = {
             chunk.get('chunk_id'): best_match_indices[i] 
             for i, chunk in enumerate(all_chunks_in_order)
             if chunk.get('chunk_id') is not None and best_match_scores[i] >= CONFIDENCE_THRESHOLD
         }
-        # Robust mapping from chunk_id -> row index
-        id_to_row = {chunk.get('chunk_id'): i for i, chunk in enumerate(all_chunks_in_order) if chunk.get('chunk_id') is not None}
-
-        # 1) Graph-based boost: if chunk A references chunk B and B is confidently placed,
-        #    boost A toward B's section.
-        for source_id, target_id in reference_graph.edges():
-            source_row = id_to_row.get(source_id)
-            if source_row is None:
-                continue
-            if target_id in confident_placements and 0 <= source_row < similarity_matrix.shape[0]:
+        
+        # Use the 'type' attribute we added to the edges for more precise boosting
+        for source_id, target_id, data in reference_graph.edges(data=True):
+            if target_id in confident_placements and source_id < similarity_matrix.shape[0]:
+                # We can even have different boost amounts for different link types
+                edge_type = data.get('type')
+                current_boost = BOOST_AMOUNT
+                if edge_type == 'reference': # A \ref is a very strong link
+                    current_boost = BOOST_AMOUNT * 1.5
+                
                 target_section_index = confident_placements[target_id]
-                original_score = similarity_matrix[source_row, target_section_index]
-                similarity_matrix[source_row, target_section_index] = min(1.0, original_score + BOOST_AMOUNT)
+                original_score = similarity_matrix[source_id, target_section_index]
+                similarity_matrix[source_id, target_section_index] = min(1.0, original_score + current_boost)
 
-        # 2) Neighbor-window boost: within a sliding window, if neighbors are confidently
-        #    clustered in one section, gently boost current chunk toward that section.
-        if ENABLE_NEIGHBOR_BOOST and similarity_matrix.size > 0 and len(all_chunks_in_order) > 0:
-            n_chunks = similarity_matrix.shape[0]
-            n_sections = similarity_matrix.shape[1]
-            # Defensive checks
-            if n_sections > 0:
-                # For each chunk i, consider neighbors [i-w, i+w]
-                for i in range(n_chunks):
-                    total_boost = 0.0
-                    votes = {}
-                    start = max(0, i - NEIGHBOR_WINDOW)
-                    end = min(n_chunks - 1, i + NEIGHBOR_WINDOW)
-                    for j in range(start, end + 1):
-                        if j == i:
-                            continue
-                        # Use confident neighbor placements only
-                        neighbor_chunk = all_chunks_in_order[j]
-                        neighbor_id = neighbor_chunk.get('chunk_id')
-                        if neighbor_id is None:
-                            continue
-                        if j < len(best_match_scores) and best_match_scores[j] >= CONFIDENCE_THRESHOLD:
-                            sec_idx = best_match_indices[j]
-                            votes[sec_idx] = votes.get(sec_idx, 0) + 1
-                    if votes:
-                        # Choose the section with most votes
-                        sec_idx, count = max(votes.items(), key=lambda kv: kv[1])
-                        # Compute boost magnitude bounded by NEIGHBOR_MAX
-                        boost_mag = min(NEIGHBOR_MAX, count * NEIGHBOR_BOOST)
-                        original = similarity_matrix[i, sec_idx]
-                        similarity_matrix[i, sec_idx] = min(1.0, original + boost_mag)
-                        total_boost = boost_mag
-                    # Optional: could log per-chunk boosts at debug level
-                    # log.debug(f"Neighbor boost for chunk {i}: +{total_boost:.3f}")
         return similarity_matrix
-
-    def _build_reference_graph(self, all_chunks_in_order):
-        log.info("  -> Building document reference graph...")
-        G = nx.DiGraph()
-        label_to_chunk_id = {}
-        for chunk in all_chunks_in_order:
-            chunk_id = chunk.get('chunk_id')
-            if chunk_id is None: continue
-            G.add_node(chunk_id)
-            for label in chunk.get('metadata', {}).get('labels', []):
-                label_to_chunk_id[label] = chunk_id
-        for chunk in all_chunks_in_order:
-            chunk_id = chunk.get('chunk_id')
-            if chunk_id is None: continue
-            for ref in chunk.get('metadata', {}).get('refs', []):
-                target_chunk_id = label_to_chunk_id.get(ref)
-                if target_chunk_id and G.has_node(target_chunk_id):
-                    G.add_edge(chunk_id, target_chunk_id)
-        log.info(f"  -> Reference graph built with {G.number_of_nodes()} nodes and {G.number_of_edges()} edges.")
-        return G
 
     def _create_empty_skeleton(self, node_level):
         new_level = {}
