@@ -32,10 +32,22 @@ def main(session_path, original_source, aug_source=None, template="bitcoin_paper
         # To analyze, we need to parse the original and final docs into trees
         def parse_for_analysis(file_path):
             content = load_file_content(file_path)
-            chunks = extract_document_sections(content, source_path=file_path)
+            # extract_document_sections returns (chunks, preserved_data)
+            chunks, _preserved = extract_document_sections(content, source_path=file_path)
             grouped = group_chunks_by_section(chunks)
-            # For analysis, we use the grouped structure directly as a simple "tree"
-            return grouped
+            # Adapt grouped structure into the hierarchical node shape expected by DocumentAnalyzer
+            tree = {}
+            for title, chunk_list in grouped.items():
+                if chunk_list:
+                    hierarchy_path = chunk_list[0].get('metadata', {}).get('hierarchy_path', [title])
+                else:
+                    hierarchy_path = [title]
+                tree[title] = {
+                    'metadata': {'hierarchy_path': hierarchy_path},
+                    'chunks': chunk_list,
+                    'subsections': {}
+                }
+            return tree
 
         log.info("Parsing original document for analysis...")
         original_tree = parse_for_analysis(original_source)
