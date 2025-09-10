@@ -107,7 +107,7 @@ class SemanticMapper:
         similarity_matrix = cosine_similarity(chunk_embeddings, self.section_embeddings)
 
        # 3. Create a deep, empty copy of the hierarchical skeleton to populate.
-        assignments = self._create_empty_skeleton(self.skeleton)
+        assignments = self._create_empty_skeleton(self.skeleton, [])
         assignments['Orphaned_Content'] = [] # For chunks that don't fit well anywhere.
 
         # 4. Find the best hierarchical path for each chunk and compute top-k candidates
@@ -176,19 +176,27 @@ class SemanticMapper:
 
         return assignments
 
-    def _create_empty_skeleton(self, node_level):
+    def _create_empty_skeleton(self, node_level, current_path=None):
         """
         Recursively creates a deep copy of the skeleton, preserving all metadata
         (like 'generative' flags) and setting up empty 'chunks' lists.
+        Additionally, annotates each node with its hierarchy_path for downstream analysis.
         """
+        if current_path is None:
+            current_path = []
         new_level = {}
         for title, data in node_level.items():
+            path_here = current_path + [title]
             # Start by copying ALL keys from the template (prompt, description, generative, etc.)
             new_node = data.copy()
+            # Ensure/merge metadata and set hierarchy_path
+            existing_meta = new_node.get('metadata', {}) if isinstance(new_node.get('metadata', {}), dict) else {}
+            existing_meta['hierarchy_path'] = path_here
+            new_node['metadata'] = existing_meta
             # Then, specifically set the 'chunks' list to be empty.
             new_node['chunks'] = []
             # Finally, recurse to build the subsections.
-            new_node['subsections'] = self._create_empty_skeleton(data.get('subsections', {}))
+            new_node['subsections'] = self._create_empty_skeleton(data.get('subsections', {}), path_here)
             new_level[title] = new_node
         return new_level
 

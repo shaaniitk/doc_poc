@@ -16,12 +16,46 @@ from sklearn.metrics.pairwise import cosine_similarity
 from .embedding_client import UnifiedEmbeddingClient
 import numpy as np
 from langchain.memory import VectorStoreRetrieverMemory
-from langchain_community.vectorstores import FAISS
-from .embedding_client import LangChainEmbeddingWrapper
-from langchain_community.docstore.in_memory import InMemoryDocstore
-import faiss
+# Try to import FAISS and related components; fall back gracefully if unavailable (e.g., Windows without faiss)
+try:
+    from langchain_community.vectorstores import FAISS  # type: ignore
+    from langchain_community.docstore.in_memory import InMemoryDocstore  # type: ignore
+    import faiss  # type: ignore
+    FAISS_AVAILABLE = True
+except Exception as _faiss_err:  # Broad by design: support environments without faiss wheels
+    FAISS_AVAILABLE = False
+    FAISS = None  # type: ignore
+    InMemoryDocstore = None  # type: ignore
+    faiss = None  # type: ignore
+    logging.getLogger(__name__).warning(
+        "FAISS is not available; falling back to a simple in-memory memory store. Error: %s",
+        _faiss_err,
+    )
 
 log = logging.getLogger(__name__)
+
+# Simple fallback memory to avoid hard dependency on FAISS
+class SimpleMemory:
+    def __init__(self, max_items: int = 10):
+        self.history = []
+        self.max_items = max_items
+
+    def load_memory_variables(self, inputs):
+        if not self.history:
+            return {"history": "No relevant memories yet."}
+        # Return a small concatenation of recent outputs as the "history"
+        snippets = []
+        for item in self.history[-3:]:
+            out = item.get("output", "")
+            if isinstance(out, str) and out:
+                snippets.append(out[:250] + ("..." if len(out) > 250 else ""))
+        return {"history": "\n".join(snippets) if snippets else "No relevant memories yet."}
+
+    def save_context(self, inputs, outputs):
+        self.history.append(outputs)
+        # Trim history to cap size
+        if len(self.history) > self.max_items:
+            self.history = self.history[-self.max_items:]
 
 class HierarchicalProcessingAgent:
     def __init__(self, llm_client: UnifiedLLMClient, output_format="latex", kg_processor=None):
@@ -37,17 +71,22 @@ class HierarchicalProcessingAgent:
         # 1. Create unified embedding client from config
         embedding_client = UnifiedEmbeddingClient(SEMANTIC_MAPPING_CONFIG)
         
-        # 2. Get embedding dimension from the client
-        embedding_size = embedding_client.get_embedding_dimension()
+        if FAISS_AVAILABLE:
+            # 2. Get embedding dimension from the client
+            embedding_size = embedding_client.get_embedding_dimension()
 
-        # 3. Use the dynamically determined size to create the FAISS index.
-        index = faiss.IndexFlatL2(embedding_size)
-        
-        # 4. Initialize the rest of the memory system with our wrapper.
-        embedding_fn = LangChainEmbeddingWrapper(embedding_client)
-        vectorstore = FAISS(embedding_fn, index, InMemoryDocstore({}), {})
-        retriever = vectorstore.as_retriever(search_kwargs=dict(k=1))
-        self.memory = VectorStoreRetrieverMemory(retriever=retriever)
+            # 3. Use the dynamically determined size to create the FAISS index.
+            index = faiss.IndexFlatL2(embedding_size)  # type: ignore
+            
+            # 4. Initialize the rest of the memory system with our wrapper.
+            from .embedding_client import LangChainEmbeddingWrapper
+            embedding_fn = LangChainEmbeddingWrapper(embedding_client)
+            vectorstore = FAISS(embedding_fn, index, InMemoryDocstore({}), {})  # type: ignore
+            retriever = vectorstore.as_retriever(search_kwargs=dict(k=1))
+            self.memory = VectorStoreRetrieverMemory(retriever=retriever)
+        else:
+            # Graceful fallback when FAISS isn't available
+            self.memory = SimpleMemory()
         # --- END Memory Initialization ---
 
         
@@ -236,10 +275,14 @@ class HierarchicalProcessingAgent:
 
         log.info(f"    -> Discovered {len(subsection_titles)} subsections to create.")
         parent_node_data['subsections'] = {}
+        parent_path = parent_node_data.get('metadata', {}).get('hierarchy_path', [parent_title])
         for title in subsection_titles:
             parent_node_data['subsections'][title] = {
-                'prompt': parent_node_data['prompt'], 'description': f"Content related to {title}",
-                'chunks': [], 'subsections': {}
+                'prompt': parent_node_data['prompt'],
+                'description': f"Content related to {title}",
+                'chunks': [],
+                'subsections': {},
+                'metadata': {'hierarchy_path': parent_path + [title]}
             }
 
         if parent_node_data.get('chunks'):

@@ -34,19 +34,21 @@ def main(session_path, original_source, aug_source=None, template="bitcoin_paper
             content = load_file_content(file_path)
             # extract_document_sections returns (chunks, preserved_data)
             chunks, _preserved = extract_document_sections(content, source_path=file_path)
-            grouped = group_chunks_by_section(chunks)
-            # Adapt grouped structure into the hierarchical node shape expected by DocumentAnalyzer
+            # Build a nested tree using each chunk's hierarchy_path metadata
             tree = {}
-            for title, chunk_list in grouped.items():
-                if chunk_list:
-                    hierarchy_path = chunk_list[0].get('metadata', {}).get('hierarchy_path', [title])
-                else:
-                    hierarchy_path = [title]
-                tree[title] = {
-                    'metadata': {'hierarchy_path': hierarchy_path},
-                    'chunks': chunk_list,
-                    'subsections': {}
-                }
+            for chunk in chunks:
+                path = chunk.get('metadata', {}).get('hierarchy_path', []) or ['Preamble']
+                current = tree
+                for i, title in enumerate(path):
+                    if title not in current:
+                        current[title] = {
+                            'metadata': {'hierarchy_path': path[:i+1]},
+                            'chunks': [],
+                            'subsections': {}
+                        }
+                    if i == len(path) - 1:
+                        current[title]['chunks'].append(chunk)
+                    current = current[title]['subsections']
             return tree
 
         log.info("Parsing original document for analysis...")
