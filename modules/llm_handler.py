@@ -13,12 +13,12 @@ from langchain.chains import LLMChain
 from .intelligent_mapper import IntelligentMapper 
 import networkx as nx
 from sklearn.metrics.pairwise import cosine_similarity
-from sentence_transformers import SentenceTransformer
+from .embedding_client import UnifiedEmbeddingClient
 import numpy as np
 from langchain.memory import VectorStoreRetrieverMemory
 from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import SentenceTransformerEmbeddings
-from langchain.docstore import InMemoryDocstore
+from .embedding_client import LangChainEmbeddingWrapper
+from langchain_community.docstore.in_memory import InMemoryDocstore
 import faiss
 
 log = logging.getLogger(__name__)
@@ -34,20 +34,17 @@ class HierarchicalProcessingAgent:
         self.all_chunks_map = {} # For quick lookup
         self.kg_processor = kg_processor
             # --- Initialize LangChain Memory ---
-        # 1. Get the model name from the central config.
-        model_name = SEMANTIC_MAPPING_CONFIG['model']
+        # 1. Create unified embedding client from config
+        embedding_client = UnifiedEmbeddingClient(SEMANTIC_MAPPING_CONFIG)
         
-        # 2. Dynamically determine the embedding dimension from the model itself.
-        #    This makes the code robust to any model you choose in the config.
-        temp_model = SentenceTransformer(model_name)
-        embedding_size = temp_model.get_sentence_embedding_dimension()
-        del temp_model # Clean up the temporary model
+        # 2. Get embedding dimension from the client
+        embedding_size = embedding_client.get_embedding_dimension()
 
         # 3. Use the dynamically determined size to create the FAISS index.
         index = faiss.IndexFlatL2(embedding_size)
         
-        # 4. Initialize the rest of the memory system as before.
-        embedding_fn = SentenceTransformerEmbeddings(model_name=model_name)
+        # 4. Initialize the rest of the memory system with our wrapper.
+        embedding_fn = LangChainEmbeddingWrapper(embedding_client)
         vectorstore = FAISS(embedding_fn, index, InMemoryDocstore({}), {})
         retriever = vectorstore.as_retriever(search_kwargs=dict(k=1))
         self.memory = VectorStoreRetrieverMemory(retriever=retriever)
@@ -61,7 +58,7 @@ class HierarchicalProcessingAgent:
         all_chunks = self._flatten_tree_to_chunks(document_tree)
         self.all_chunks_map = {c['chunk_id']: c['content'] for c in all_chunks if 'chunk_id' in c}
         # You'll need an instance of the embedding model here
-        embedding_model = SentenceTransformer(SEMANTIC_MAPPING_CONFIG['model']) 
+        embedding_model = UnifiedEmbeddingClient(SEMANTIC_MAPPING_CONFIG) 
         self.semantic_graph = build_semantic_graph(all_chunks, embedding_model)
         if not self.global_context:
             self.global_context = document_tree.get("Abstract", {}).get('description', 
@@ -181,7 +178,7 @@ class HierarchicalProcessingAgent:
         return repr("\n---\n").strip("'").join(context_parts) if context_parts else "N/A"
 
     @robust_llm_call(max_retries=2)
-    def _strategy_refactor_content(self, context, node_prompt):
+    def _strategy_refactor_content(self, context, node_data):
         persona_prompts = node_data.get('persona_prompts', {})
         system_prompt = persona_prompts.get('default', node_data.get('prompt', 'You are a professional technical editor.')) 
         full_prompt_text = f"{system_prompt}\n\n{PROMPTS['hierarchical_refactor']}"
@@ -287,9 +284,14 @@ def build_semantic_graph(all_chunks, embedding_model, top_k=3, threshold=0.75):
     for i in range(len(all_chunks)):
         # Get similarity scores for chunk i against all other chunks
         sim_scores = similarity_matrix[i]
+        # Adjust top_k to not exceed available chunks (excluding self)
+        effective_top_k = min(top_k, len(all_chunks) - 1)
         # Find the indices of the top_k most similar chunks (excluding itself)
         # We use argpartition for efficiency, as we don't need to fully sort
-        top_indices = np.argpartition(sim_scores, -top_k-1)[-top_k-1:]
+        if effective_top_k > 0:
+            top_indices = np.argpartition(sim_scores, -effective_top_k-1)[-effective_top_k-1:]
+        else:
+            top_indices = []
         
         source_id = chunk_ids[i]
         if source_id is None: continue

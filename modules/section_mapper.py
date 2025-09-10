@@ -19,10 +19,10 @@ Key Features:
 """
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 
 from .error_handler import ProcessingError
+from .embedding_client import UnifiedEmbeddingClient
 from config import DOCUMENT_TEMPLATES, SEMANTIC_MAPPING_CONFIG
 
 # --- Main Semantic Mapping Logic ---
@@ -44,12 +44,11 @@ class SemanticMapper:
         self.section_names, self.section_embeddings = self._prepare_skeleton_embeddings()
 
     def _load_model(self):
-        """Loads the sentence-transformer model specified in the config."""
+        """Loads the embedding model specified in the config."""
         try:
-            model_name = self.config['model']
-            return SentenceTransformer(model_name)
+            return UnifiedEmbeddingClient(self.config)
         except Exception as e:
-            raise ProcessingError(f"Failed to load semantic mapping model '{model_name}': {e}")
+            raise ProcessingError(f"Failed to load semantic mapping model: {e}")
 
     def _prepare_skeleton_embeddings(self):
     #Recursively flattens the hierarchical skeleton and generates embeddings for all nodes.

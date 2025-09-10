@@ -19,7 +19,7 @@ This is the semantic quality control checkpoint for all content transformations.
 """
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
+from .embedding_client import UnifiedEmbeddingClient
 from typing import List, Tuple, Dict, Optional
 import logging
 from .error_handler import ProcessingError
@@ -45,19 +45,15 @@ class SemanticValidator:
     improving content quality and structure.
     """
     
-    def __init__(self, model_name='all-mpnet-base-v2', similarity_threshold=0.75):
+    def __init__(self, model_config=None, similarity_threshold=0.75):
         """🎯 INITIALIZE SEMANTIC VALIDATOR
         
         Args:
-            model_name: Sentence transformer model to use
+            model_config: Configuration dict for embedding model (uses SEMANTIC_MAPPING_CONFIG if None)
             similarity_threshold: Minimum similarity score for validation
-            
-        🧠 MODEL SELECTION:
-        - all-mpnet-base-v2: Best overall performance (default)
-        - all-MiniLM-L6-v2: Faster, good for real-time validation
-        - paraphrase-mpnet-base-v2: Specialized for paraphrase detection
         """
-        self.model_name = model_name
+        from config import SEMANTIC_MAPPING_CONFIG
+        self.model_config = model_config or SEMANTIC_MAPPING_CONFIG
         self.similarity_threshold = similarity_threshold
         self.model = None  # Lazy loading for better startup performance
         self.logger = logging.getLogger(__name__)
@@ -73,13 +69,13 @@ class SemanticValidator:
     def _load_model(self):
         """🔄 LAZY MODEL LOADING
         
-        Loads the sentence transformer model only when needed
+        Loads the embedding model only when needed
         to improve startup performance and memory usage.
         """
         if self.model is None:
             try:
-                self.model = SentenceTransformer(self.model_name)
-                self.logger.info(f"Loaded semantic model: {self.model_name}")
+                self.model = UnifiedEmbeddingClient(self.model_config)
+                self.logger.info(f"Loaded semantic model: {self.model_config['model']}")
             except Exception as e:
                 self.logger.error(f"Failed to load semantic model: {e}")
                 raise SemanticValidationError(f"Model loading failed: {e}")

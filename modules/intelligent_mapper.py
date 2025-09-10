@@ -9,7 +9,7 @@ from scipy.optimize import linear_sum_assignment
 
 from .llm_client import UnifiedLLMClient, LangChainLLM
 from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
+# from langchain.chains import LLMChain  # Deprecated - using RunnableSequence instead
 
 from config import DOCUMENT_TEMPLATES, SEMANTIC_MAPPING_CONFIG, PROMPTS
 
@@ -196,31 +196,53 @@ class IntelligentMapper:
         return matrix
 
     def _run_final_assignment(self, all_chunks, refined_matrix):
-        """Makes the final assignment decisions based on the refined scores."""
+        """
+        Makes the final assignment decisions and stores top N candidates
+        in metadata to support the advanced cohesion pass.
+        """
         log.info("--- Final Assignment Pass ---")
         mapped_tree = self._create_empty_skeleton(self.skeleton)
         orphans = []
         threshold = self.config['similarity_threshold']
-        best_matches = np.argmax(refined_matrix, axis=1)
+        num_candidates = 3 # Store the top 3 candidates for each chunk
 
         for i, chunk in enumerate(all_chunks):
-            best_path_index = best_matches[i]
-            score = refined_matrix[i, best_path_index]
-            chunk['metadata']['assignment_score'] = float(score)
+            # Get the scores for this chunk against all sections
+            scores = refined_matrix[i]
+            
+  
+            top_indices = np.argsort(scores)[::-1][:num_candidates]
+            
+            candidate_sections = []
+            for index in top_indices:
+                candidate_sections.append({
+                    'path': self.section_paths[index],
+                    'score': float(scores[index]),
+                    # distance = 1 - score (for your fallback logic)
+                    'distance': 1.0 - float(scores[index]) 
+                })
+            chunk.setdefault('metadata', {})['candidate_sections'] = candidate_sections
+            # --- END NEW LOGIC ---
 
-            if score >= threshold:
-                if not self._assign_chunk_to_path(mapped_tree, chunk, self.section_paths[best_path_index]):
+            # The rest of the assignment logic is the same
+            best_match_index = top_indices[0]
+            best_score = scores[best_match_index]
+            chunk['metadata']['assignment_score'] = float(best_score)
+
+            if best_score >= threshold:
+                best_path = self.section_paths[best_match_index]
+                if not self._assign_chunk_to_path(mapped_tree, chunk, best_path):
                     orphans.append(chunk)
             else:
                 orphans.append(chunk)
+                
         return mapped_tree, orphans
 
     # --- HELPER PASSES AND METHODS ---
 
     def _assign_chunk_to_path(self, mapped_tree, chunk, path):
         """
-        Navigates to the correct node in the tree and assigns the chunk,
-        while also updating the chunk's internal metadata to reflect its new home.
+        Assigns a chunk to a path and CORRECTS its internal metadata.
         """
         try:
             parent_node = mapped_tree
@@ -228,13 +250,14 @@ class IntelligentMapper:
                 parent_node = parent_node[part]['subsections']
             target_node = parent_node[path[-1]]
             
+            # THE CORE METADATA FIX
             chunk['metadata']['hierarchy_path'] = path
             chunk['parent_section'] = ' -> '.join(path)
             
             target_node['chunks'].append(chunk)
             return True
         except KeyError:
-            log.warning(f"Could not find path {' -> '.join(path)} in tree skeleton for chunk assignment.")
+            log.warning(f"Could not find path '{" -> ".join(path)}' for assignment.")
             return False
 
     def _run_semantic_pass(self, chunks):
@@ -321,7 +344,8 @@ class IntelligentMapper:
         remaining_orphans = []
         section_details = "\n".join([f"- Path: {' -> '.join(s['path'])}\n  Description: {s['description']}" for s in self.flat_skeleton])
         prompt_template = PromptTemplate(input_variables=["section_details", "chunk_content"], template=PROMPTS['llm_map_chunk_to_section'])
-        chain = LLMChain(llm=self.langchain_llm, prompt=prompt_template)
+        # Use new RunnableSequence pattern instead of deprecated LLMChain
+        chain = prompt_template | self.langchain_llm
         # Build case-insensitive map for valid paths
         valid_paths_map = {" -> ".join(p).lower(): p for p in self.section_paths}
         soft_margin = self.config.get('soft_accept_margin', 0.05)
@@ -330,7 +354,7 @@ class IntelligentMapper:
 
         for orphan in orphans:
             try:
-                response = chain.invoke({"section_details": section_details, "chunk_content": orphan['content']})['text'].strip()
+                response = chain.invoke({"section_details": section_details, "chunk_content": orphan['content']}).strip()
                 # Normalize LLM response
                 first_line = response.splitlines()[0].strip().strip('"').strip("'")
                 normalized = first_line.replace(' > ', ' -> ').replace('—', '->').replace(' - ', ' -> ').strip()

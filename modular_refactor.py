@@ -19,7 +19,7 @@ import logging
 import re
 
 from modules.knowledge_graph_processor import KnowledgeGraphProcessor
-from sentence_transformers import SentenceTransformer
+from modules.embedding_client import UnifiedEmbeddingClient
 from config import SEMANTIC_MAPPING_CONFIG
 from modules.file_loader import load_file_content
 from modules.chunker import extract_document_sections
@@ -65,7 +65,7 @@ def main(source, source2=None, combine_strategy="smart", output_format="latex",
         all_chunks_from_parser, preserved_data = extract_document_sections(content, source_path=source)
         log.info("--- STAGE 1.2: KNOWLEDGE GRAPH CREATION ---")
         # We only need to load the embedding model once for the whole pipeline
-        embedding_model = SentenceTransformer(SEMANTIC_MAPPING_CONFIG['model'])
+        embedding_model = UnifiedEmbeddingClient(SEMANTIC_MAPPING_CONFIG)
         kg_processor = KnowledgeGraphProcessor(all_chunks_from_parser, embedding_model)
         kg_processor.build_graphs() # Build both graphs
         chunk_output_path = output_manager.save_json_output("1_chunk_output.json", all_chunks_from_parser)
@@ -145,26 +145,26 @@ def main(source, source2=None, combine_strategy="smart", output_format="latex",
         # Phase 2: Process generative content
         processed_generative_nodes = {}
         if generative_nodes:
-            log.info("-> Creating generative content (Summary, etc.)...")
-            semantic_graph = agent.semantic_graph
-            if semantic_graph and semantic_graph.nodes:
-                # 1. Calculate the centrality of each chunk
-                centrality = nx.degree_centrality(semantic_graph)
-                # 2. Sort chunks by their importance and get the top 10
-                #sorted_chunks = sorted(centrality.items(), key=lambda item: item[1], reverse=True)
-                #core_concept_ids = [chunk_id for chunk_id, score in sorted_chunks[:10]]
-                core_concept_chunks = kg_processor.get_core_concept_chunks()
-                # 3. Build a focused context from only the most important chunks
+            log.info("-> Creating generative content using Knowledge Graph core concepts...")
+            
+            # Get core concept chunks directly from the KG processor.
+            # All the complex logic is now correctly hidden inside this method.
+            core_concept_chunks = kg_processor.get_core_concept_chunks()
+            
+            if core_concept_chunks:
+                # Build a focused context from only the most important chunks
                 core_concept_texts = [c['content'] for c in core_concept_chunks]
                 generative_context = "\n\n...\n\n".join(core_concept_texts)
                 log.info(f"-> Built a focused generative context from {len(core_concept_texts)} core concepts.")
-           
             else:
-                # Fallback to the old method if the graph is empty
-                temp_formatter = HierarchicalOutputFormatter("latex")
-                generative_context = temp_formatter.format_document(processed_main_tree.copy())    
-
-        processed_generative_nodes = agent.process_tree(generative_nodes, generative_context=generative_context)
+                # This is a robust fallback for the case where no core concepts are found
+                # or the graph is empty.
+                log.warning("-> Could not identify core concepts from Knowledge Graph. Falling back to full document context.")
+                temp_formatter = HierarchicalOutputFormatter(output_format)
+                generative_context = temp_formatter.format_document(processed_main_tree.copy())
+            
+            # The agent call remains the same, but now it receives a much better context.
+            processed_generative_nodes = agent.process_tree(generative_nodes, generative_context=generative_context)
         
               
         # Recombine all parts
