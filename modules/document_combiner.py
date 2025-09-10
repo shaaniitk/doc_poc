@@ -22,7 +22,7 @@ class HierarchicalDocumentCombiner:
             raise ProcessingError("Document inputs for combiner must be hierarchical trees (dictionaries).")
 
         combined_tree = copy.deepcopy(base_doc_tree)
-        self._weave_overlapping_content(combined_tree, aug_doc_tree,stratgy)
+        self._weave_overlapping_content(combined_tree, aug_doc_tree, strategy)
         self._graft_new_structures(combined_tree, aug_doc_tree)
         return combined_tree
 

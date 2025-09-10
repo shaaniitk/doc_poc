@@ -6,14 +6,13 @@ from pylatexenc.macrospec import LatexContextDb
 from .llm_client import UnifiedLLMClient, LangChainLLM
 from .error_handler import ChunkingError
 from config import LLM_CHUNK_CONFIG, PROMPTS,LANGCHAIN_CHUNK_CONFIG
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pydantic import BaseModel, Field
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
 from typing import List
-from docx import Document
-from docx.document import Document as DocxDocument
+# from docx import Document
 from pylatexenc.macrospec import SpecialsSpec
 import logging
 from pylatexenc.latexwalker import LatexWalker, LatexCharsNode, LatexMacroNode, LatexEnvironmentNode, LatexCommentNode # <-- Add LatexCommentNode
@@ -28,42 +27,42 @@ class SemanticSplit(BaseModel):
         description="A list of text strings, where each string is a semantically complete paragraph or group of paragraphs."
     )
 
-class DocxChunker:
-    def chunk_document(self, doc: DocxDocument):
-        chunks = []
-        hierarchy = []
-        current_paragraph_buffer = []
+# class DocxChunker:
+#     def chunk_document(self, doc: Document):
+#         chunks = []
+#         hierarchy = []
+#         current_paragraph_buffer = []
 
-        def flush_buffer():
-            if current_paragraph_buffer:
-                content = "\n".join(current_paragraph_buffer).strip()
-                if content:
-                    chunks.append({
-                        'type': 'paragraph', 'content': content,
-                        'parent_section': ' -> '.join(hierarchy),
-                        'metadata': {'hierarchy_path': hierarchy.copy()}
-                    })
-                current_paragraph_buffer.clear()
+#         def flush_buffer():
+#             if current_paragraph_buffer:
+#                 content = "\n".join(current_paragraph_buffer).strip()
+#                 if content:
+#                     chunks.append({
+#                         'type': 'paragraph', 'content': content,
+#                         'parent_section': ' -> '.join(hierarchy),
+#                         'metadata': {'hierarchy_path': hierarchy.copy()}
+#                     })
+#                 current_paragraph_buffer.clear()
 
-        for para in doc.paragraphs:
-            style_name = para.style.name
-            level = 0
-            if style_name.startswith('Heading'):
-                try:
-                    level = int(style_name.split(' ')[-1])
-                except:
-                    level = 0
-            
-            if level > 0:
-                flush_buffer()
-                # Update hierarchy
-                hierarchy = hierarchy[:level-1]
-                hierarchy.append(para.text.strip())
-            else:
-                current_paragraph_buffer.append(para.text)
-        
-        flush_buffer() # Flush any remaining paragraph content at the end
-        return chunks
+#         for para in doc.paragraphs:
+#             style_name = para.style.name
+#             level = 0
+#             if style_name.startswith('Heading'):
+#                 try:
+#                     level = int(style_name.split(' ')[-1])
+#                 except:
+#                     level = 0
+#             
+#             if level > 0:
+#                 flush_buffer()
+#                 # Update hierarchy
+#                 hierarchy = hierarchy[:level-1]
+#                 hierarchy.append(para.text.strip())
+#             else:
+#                 current_paragraph_buffer.append(para.text)
+#         
+#         flush_buffer() # Flush any remaining paragraph content at the end
+#         return chunks
 
 # --- NEW: LangChain-powered Markdown Chunker ---
 class LangChainMarkdownChunker:
@@ -278,13 +277,13 @@ def extract_document_sections(content, source_path):
         if preserved_preamble:
             preserved_data['latex_preamble'] = preserved_preamble
     
-    elif extension == '.docx':
-        log.info("-> Using DocxChunker for .docx file.")
-        # We need to load the document object for the docx chunker
-        from docx import Document
-        doc = Document(io.BytesIO(content)) # Assume content is bytes, or load from path
-        chunker = DocxChunker()
-        initial_chunks = chunker.chunk_document(doc)
+    # elif extension == '.docx':
+    #     log.info("-> Using DocxChunker for .docx file.")
+    #     # We need to load the document object for the docx chunker
+    #     from docx import Document
+    #     doc = Document(io.BytesIO(content)) # Assume content is bytes, or load from path
+    #     chunker = DocxChunker()
+    #     initial_chunks = chunker.chunk_document(doc)
 
     elif extension == '.md':
         log.info("-> Using LangChainMarkdownChunker for .md file.")
@@ -375,3 +374,200 @@ def _llm_semantic_split_langchain(content: str, llm: LangChainLLM) -> List[str]:
     except Exception as e:
         log.warning(f"LangChain semantic split failed. Returning original chunk. Error: {e}")
         return [content]
+
+
+# --- New adaptive, token-aware chunker (non-breaking addition) ---
+from typing import List, Dict, Any, Tuple
+import re
+import uuid
+from transformers import AutoTokenizer
+
+
+def _split_atomic_blocks(text: str) -> List[Tuple[str, str]]:
+    """
+    Split text into segments, preserving atomic blocks like code blocks and LaTeX math environments.
+    Returns a list of tuples: (segment_type, segment_text) where segment_type in {"atomic", "text"}.
+    """
+    # Patterns for atomic blocks: fenced code, display math $$...$$, \[...\], \begin{...}...\end{...}
+    patterns = [
+        (r"```[\s\S]*?```", "fenced_code"),
+        (r"\$\$[\s\S]*?\$\$", "display_math"),
+        (r"\\\[[\s\S]*?\\\]", "display_math_bracket"),
+        (r"\\begin\{[^}]+\}[\s\S]*?\\end\{[^}]+\}", "latex_env"),
+    ]
+
+    # Build a combined regex with capturing groups
+    combined = "|".join(f"({p})" for p, _ in patterns)
+    regex = re.compile(combined, re.MULTILINE)
+
+    segments: List[Tuple[str, str]] = []
+    last_idx = 0
+    for m in regex.finditer(text):
+        if m.start() > last_idx:
+            segments.append(("text", text[last_idx:m.start()]))
+        segments.append(("atomic", m.group(0)))
+        last_idx = m.end()
+    if last_idx < len(text):
+        segments.append(("text", text[last_idx:]))
+    return segments
+
+
+def _simple_sentences(paragraph: str) -> List[str]:
+    # Lightweight sentence splitter; avoids external deps
+    # Split on ., !, ? followed by space or end, but keep delimiters
+    parts = re.split(r"(?<=[.!?])\s+", paragraph.strip())
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _tokens(text: str) -> List[str]:
+    return re.findall(r"[A-Za-z0-9_]+", text.lower())
+
+
+def _jaccard(a: List[str], b: List[str]) -> float:
+    sa, sb = set(a), set(b)
+    if not sa and not sb:
+        return 1.0
+    if not sa or not sb:
+        return 0.0
+    inter = len(sa & sb)
+    union = len(sa | sb)
+    return inter / union if union else 0.0
+
+
+def _topic_boundaries(sentences: List[str], low_sim_threshold: float = 0.25) -> List[int]:
+    """
+    Heuristic topic-shift detection based on lexical Jaccard similarity between adjacent sentences.
+    Returns list of indices after which a boundary should be placed.
+    """
+    boundaries: List[int] = []
+    for i in range(len(sentences) - 1):
+        s1, s2 = _tokens(sentences[i]), _tokens(sentences[i + 1])
+        sim = _jaccard(s1, s2)
+        if sim < low_sim_threshold:
+            boundaries.append(i)
+    return boundaries
+
+
+class AdaptiveChunker:
+    """
+    Token-aware, topic-shift-aware, multi-granularity chunker.
+    - Token-based windows with overlap
+    - Preserves atomic blocks (code/math environments)
+    - Produces fine/medium/coarse granularities with lineage tracking
+    """
+
+    def __init__(
+        self,
+        tokenizer_name: str = "bert-base-uncased",
+        max_tokens_fine: int = 256,
+        overlap_tokens: int = 32,
+        granularity_multipliers: Tuple[int, int] = (2, 4),
+    ) -> None:
+        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, use_fast=True)
+        self.max_tokens_fine = max_tokens_fine
+        self.overlap_tokens = overlap_tokens
+        self.granularity_multipliers = granularity_multipliers  # (medium_factor, coarse_factor)
+
+    def _token_len(self, text: str) -> int:
+        return len(self.tokenizer.encode(text, add_special_tokens=False))
+
+    def _window_split(self, text: str, max_tokens: int, overlap: int) -> List[str]:
+        ids = self.tokenizer.encode(text, add_special_tokens=False)
+        chunks: List[List[int]] = []
+        start = 0
+        while start < len(ids):
+            end = min(start + max_tokens, len(ids))
+            chunks.append(ids[start:end])
+            if end == len(ids):
+                break
+            start = max(0, end - overlap)
+        return [self.tokenizer.decode(c, skip_special_tokens=True) for c in chunks]
+
+    def _chunk_text_segment(self, text: str, max_tokens: int, overlap: int, enable_topic_shifts: bool = True) -> List[str]:
+        # Break into paragraphs, then sentences within paragraphs
+        paragraphs = [p for p in re.split(r"\n\n+", text) if p.strip()]
+        out: List[str] = []
+        for para in paragraphs:
+            sents = _simple_sentences(para)
+            if enable_topic_shifts and len(sents) > 1:
+                boundaries = set(_topic_boundaries(sents))
+                # Group sentences between boundaries
+                current: List[str] = []
+                for i, s in enumerate(sents):
+                    current.append(s)
+                    if i in boundaries:
+                        block = " ".join(current).strip()
+                        out.extend(self._window_split(block, max_tokens, overlap))
+                        current = []
+                if current:
+                    block = " ".join(current).strip()
+                    out.extend(self._window_split(block, max_tokens, overlap))
+            else:
+                out.extend(self._window_split(para, max_tokens, overlap))
+        return [c for c in out if c.strip()]
+
+    def _label_block_type(self, segment_text: str) -> str:
+        if segment_text.strip().startswith("```"):
+            return "code"
+        if segment_text.strip().startswith("$$") or segment_text.strip().startswith("\\[") or segment_text.strip().startswith("\\begin"):
+            return "math"
+        return "text"
+
+    def _attach_sequence_metadata(self, chunks: List[Dict[str, Any]]) -> None:
+        for i, ch in enumerate(chunks):
+            meta = ch.setdefault("metadata", {})
+            meta["prev_chunk_id"] = chunks[i - 1]["chunk_id"] if i > 0 else None
+            meta["next_chunk_id"] = chunks[i + 1]["chunk_id"] if i < len(chunks) - 1 else None
+
+    def chunk(self, content: str, source_path: str = "", enable_topic_shifts: bool = True) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Returns a dict with three granularities: {"fine": [...], "medium": [...], "coarse": [...]}.
+        Each chunk contains: chunk_id, content, metadata with token_count, level, block_type, source_path.
+        """
+        max_fine = self.max_tokens_fine
+        max_med = max_fine * self.granularity_multipliers[0]
+        max_coarse = max_fine * self.granularity_multipliers[1]
+
+        segments = _split_atomic_blocks(content)
+
+        outputs = {"fine": [], "medium": [], "coarse": []}
+        for seg_type, seg_text in segments:
+            if seg_type == "atomic":
+                block_type = self._label_block_type(seg_text)
+                token_count = self._token_len(seg_text)
+                cid = str(uuid.uuid4())
+                base = {
+                    "chunk_id": cid,
+                    "content": seg_text,
+                    "metadata": {
+                        "token_count": token_count,
+                        "level": "atomic",
+                        "block_type": block_type,
+                        "source_path": source_path,
+                    },
+                }
+                # Atomic blocks are duplicated across granularities (not split)
+                outputs["fine"].append(base.copy())
+                outputs["medium"].append(base.copy())
+                outputs["coarse"].append(base.copy())
+            else:
+                # Non-atomic text -> split by windows at multiple granularities
+                for level, max_tokens in [("fine", max_fine), ("medium", max_med), ("coarse", max_coarse)]:
+                    parts = self._chunk_text_segment(seg_text, max_tokens, self.overlap_tokens, enable_topic_shifts)
+                    for p in parts:
+                        cid = str(uuid.uuid4())
+                        outputs[level].append({
+                            "chunk_id": cid,
+                            "content": p,
+                            "metadata": {
+                                "token_count": self._token_len(p),
+                                "level": level,
+                                "block_type": "text",
+                                "source_path": source_path,
+                            },
+                        })
+
+        # Attach sequence metadata within each level
+        for level in outputs:
+            self._attach_sequence_metadata(outputs[level])
+        return outputs

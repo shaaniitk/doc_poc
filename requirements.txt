@@ -4,10 +4,10 @@
 # Core Engine
 pylatexenc==2.10
 sentence-transformers==5.1.0
-torch==2.8.0
+torch
 scikit-learn==1.7.1
-numpy==2.3.2
-scipy==1.16.1
+numpy==1.26.4
+scipy==1.10.1
 
 # LLM & AI Services
 google-generativeai==0.8.5

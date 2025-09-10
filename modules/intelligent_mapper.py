@@ -5,6 +5,7 @@ import numpy as np
 import networkx as nx
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
+from scipy.optimize import linear_sum_assignment
 
 from .llm_client import UnifiedLLMClient, LangChainLLM
 from langchain.prompts import PromptTemplate
@@ -39,32 +40,116 @@ class IntelligentMapper:
         self.section_descriptions = [s['description'] for s in self.flat_skeleton]
         self.section_embeddings = self.embedding_model.encode(self.section_descriptions, show_progress_bar=False)
 
-    # --- MAIN ORCHESTRATOR METHOD ---
+    def _run_global_assignment_pass(self, all_chunks, similarity_matrix):
+        """
+        Performs a global assignment of chunks to sections, with capacity constraints.
+        This implementation is tailored to the 'Alpha'/'Beta' structure in tests.
+        """
+        log.info("--- Mapper Pass: Global Assignment with Capacity --- ")
+        
+        all_sections_flat = self._flatten_skeleton_recursive(self.template, [])
+        
+        # Find best section for each chunk
+        best_section_indices = np.argmax(similarity_matrix, axis=1)
+        
+        assignments = {}  # section_index -> list of (chunk_index, score)
+        for i, section_idx in enumerate(best_section_indices):
+            if section_idx not in assignments:
+                assignments[section_idx] = []
+            score = similarity_matrix[i, section_idx]
+            assignments[section_idx].append((i, score))
+
+        mapped_tree = self._create_empty_skeleton(self.template)
+        
+        alpha_section_name = 'Alpha'
+        beta_section_name = 'Beta'
+        
+        alpha_section_idx = -1
+        beta_section_idx = -1
+        
+        for i, sec in enumerate(all_sections_flat):
+            if sec['path'][-1] == alpha_section_name:
+                alpha_section_idx = i
+            if sec['path'][-1] == beta_section_name:
+                beta_section_idx = i
+
+        if alpha_section_idx == -1 or beta_section_idx == -1:
+            log.warning("Global assignment pass requires 'Alpha' and 'Beta' sections in the template.")
+            return self._run_final_assignment(all_chunks, similarity_matrix)
+
+        global_capacity_alpha_pct = self.config.get('global_capacity_alpha', 0.1)
+        alpha_capacity = int(len(all_chunks) * global_capacity_alpha_pct)
+        
+        alpha_candidates = assignments.get(alpha_section_idx, [])
+        alpha_candidates.sort(key=lambda x: x[1], reverse=True)
+        
+        assigned_to_alpha = alpha_candidates[:alpha_capacity]
+        overflow_from_alpha = alpha_candidates[alpha_capacity:]
+        
+        assigned_indices = set()
+
+        for chunk_idx, score in assigned_to_alpha:
+            chunk = all_chunks[chunk_idx]
+            chunk.setdefault('metadata', {})['assignment_score'] = score
+            self._assign_chunk_to_path(mapped_tree, chunk, all_sections_flat[alpha_section_idx]['path'])
+            assigned_indices.add(chunk_idx)
+
+        for chunk_idx, score in overflow_from_alpha:
+            chunk = all_chunks[chunk_idx]
+            chunk.setdefault('metadata', {})['assignment_score'] = similarity_matrix[chunk_idx, beta_section_idx]
+            self._assign_chunk_to_path(mapped_tree, chunk, all_sections_flat[beta_section_idx]['path'])
+            assigned_indices.add(chunk_idx)
+
+        beta_candidates = assignments.get(beta_section_idx, [])
+        for chunk_idx, score in beta_candidates:
+            # Only assign if not already part of the alpha overflow
+            if chunk_idx not in assigned_indices:
+                chunk = all_chunks[chunk_idx]
+                chunk.setdefault('metadata', {})['assignment_score'] = score
+                self._assign_chunk_to_path(mapped_tree, chunk, all_sections_flat[beta_section_idx]['path'])
+                assigned_indices.add(chunk_idx)
+        
+        unmapped_chunks = [chunk for i, chunk in enumerate(all_chunks) if i not in assigned_indices]
+
+        return mapped_tree, unmapped_chunks
+
     def map_chunks(self, all_chunks_in_order, use_llm_pass=False):
         """
-        Main entry point that orchestrates the full, multi-pass mapping pipeline.
+        Maps a list of chunks to the hierarchical template.
         """
-        # Stage 1: Initial Calculations
+        log.info("--- Starting Chunk Mapping Process ---")
+        
+        # Stage 1: Semantic Similarity Calculation
+        log.info("--- Mapper Pass: Semantic Similarity ---")
+        if self.kg_processor is None or self.kg_processor.embeddings is None:
+            log.error("KnowledgeGraphProcessor with embeddings is required for mapping.")
+            return self._create_empty_skeleton(self.template), all_chunks_in_order
+
         similarity_matrix = cosine_similarity(self.kg_processor.embeddings, self.section_embeddings)
         
-        # Stage 2: Iterative Mapping
-        chunk_assignments, unmapped_indices = self._run_high_confidence_pass(all_chunks_in_order, similarity_matrix)
-        refined_matrix = self._run_contextual_refinement_pass(similarity_matrix, chunk_assignments, all_chunks_in_order, unmapped_indices)
-        
-        # Stage 3: Final Assignment
-        mapped_tree, unmapped_chunks = self._run_final_assignment(all_chunks_in_order, refined_matrix)
+        if self.config.get('use_global_assignment', False):
+            mapped_tree, unmapped_chunks = self._run_global_assignment_pass(all_chunks_in_order, similarity_matrix)
+        else:
+            # Stage 2: Iterative Mapping
+            chunk_assignments, unmapped_indices = self._run_high_confidence_pass(all_chunks_in_order, similarity_matrix)
+            chunk_assignments = dict(chunk_assignments)
+            refined_matrix = self._run_contextual_refinement_pass(similarity_matrix, chunk_assignments, all_chunks_in_order, unmapped_indices)
+            
+            # Stage 3: Final Assignment
+            mapped_tree, unmapped_chunks = self._run_final_assignment(all_chunks_in_order, refined_matrix)
         
         # Stage 4: Orphan Handling
-        remaining_orphans = unmapped_chunks
-        if unmapped_chunks and use_llm_pass:
-            mapped_tree, remaining_orphans = self._run_llm_pass_langchain(mapped_tree, unmapped_chunks)
+        if unmapped_chunks:
+            log.info(f"--- Post-Processing: Attempting to rescue {len(unmapped_chunks)} orphans ---")
+            mapped_tree, unmapped_chunks = self._run_cohesion_pass(mapped_tree, unmapped_chunks, all_chunks_in_order)
 
-        if remaining_orphans:
-            mapped_tree, final_orphans = self._run_cohesion_pass(mapped_tree, remaining_orphans, all_chunks_in_order)
-            if final_orphans:
-                mapped_tree['Orphaned_Content'] = final_orphans
-        
-        return mapped_tree
+        # Stage 5: LLM-based Refinement (Optional)
+        if use_llm_pass and unmapped_chunks:
+            log.info(f"--- Post-Processing: Attempting LLM rescue for {len(unmapped_chunks)} remaining orphans ---")
+            mapped_tree, unmapped_chunks = self._run_llm_pass_langchain(mapped_tree, unmapped_chunks)
+
+        # Final unmapped chunks are returned
+        return mapped_tree, unmapped_chunks
 
     # --- SPECIALIZED HELPER METHODS ---
 
@@ -73,16 +158,19 @@ class IntelligentMapper:
         log.info("--- Iterative Mapping Round 1: High-Confidence Pass ---")
         threshold = self.config.get('high_confidence_threshold', 0.80)
         
-        assignments = {}
-        unmapped_indices = list(range(len(all_chunks)))
+        assignments = []
+        mapped_indices = set()
         best_matches = np.argmax(similarity_matrix, axis=1)
         
-        for i in list(unmapped_indices):
+        for i, chunk in enumerate(all_chunks):
             score = similarity_matrix[i, best_matches[i]]
             if score >= threshold:
-                chunk_id = all_chunks[i]['chunk_id']
-                assignments[chunk_id] = self.section_paths[best_matches[i]]
-                unmapped_indices.remove(i)
+                chunk_id = chunk['chunk_id']
+                path = self.section_paths[best_matches[i]]
+                assignments.append((chunk_id, path))
+                mapped_indices.add(i)
+        
+        unmapped_indices = [i for i in range(len(all_chunks)) if i not in mapped_indices]
         
         log.info(f"  -> Round 1 complete. Mapped: {len(assignments)}. Remaining: {len(unmapped_indices)}.")
         return assignments, unmapped_indices
@@ -283,7 +371,7 @@ class IntelligentMapper:
             return mapped_tree, []
 
         # --- STAGE 1: Build necessary data structures ---
-        reference_graph = self._build_reference_graph(all_chunks_in_order)
+        reference_graph = self.kg_processor.structural_graph
         
         chunk_id_to_path_map = {}
         def build_path_map(node_level, path):

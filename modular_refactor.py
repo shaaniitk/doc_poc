@@ -90,7 +90,7 @@ def main(source, source2=None, combine_strategy="smart", output_format="latex",
         log.info("--- STAGE 2: INTELLIGENT MAPPING ---")
         log_entries.append("Entering Stage 2: Intelligent Mapping.")
         mapper = IntelligentMapper(template_name=template, template_object=enhanced_template, kg_processor=kg_processor) # No flag in the constructor
-        mapped_tree = mapper.map_chunks(all_chunks_from_parser, use_llm_pass=remediate_orphans) # Flag goes here
+        mapped_tree, unmapped_chunks = mapper.map_chunks(all_chunks_from_parser, use_llm_pass=remediate_orphans) # Flag goes here
         map_output_path = output_manager.save_json_output("2_mapped_tree.json", mapped_tree)
         log.info(f"-> Mapped tree structure saved to: {map_output_path}")
         log_entries.append("Stage 2 completed.")
@@ -114,7 +114,7 @@ def main(source, source2=None, combine_strategy="smart", output_format="latex",
             log.info(f"--- STAGE 3: Combining Documents (Strategy: {combine_strategy}) ---")
             aug_content = load_file_content(source2)
             aug_chunks = extract_document_sections(aug_content, source_path=source2)
-            aug_mapped_tree = mapper.map_chunks(aug_chunks, use_llm_pass=remediate_orphans)
+            aug_mapped_tree, aug_unmapped = mapper.map_chunks(aug_chunks, use_llm_pass=remediate_orphans)
             
             if combine_strategy == "smart":
                 combiner = HierarchicalDocumentCombiner()

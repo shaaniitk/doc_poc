@@ -24,7 +24,7 @@ import faiss
 log = logging.getLogger(__name__)
 
 class HierarchicalProcessingAgent:
-    def __init__(self, llm_client: UnifiedLLMClient, output_format="latex"):
+    def __init__(self, llm_client: UnifiedLLMClient, output_format="latex", kg_processor=None):
         self.llm_client = llm_client
         self.langchain_llm = LangChainLLM(client=llm_client)
         self.full_tree = None

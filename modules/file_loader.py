@@ -5,7 +5,7 @@ This module is responsible for reading the content from various file formats,
 returning the most appropriate data structure for parsing by the chunker.
 """
 import os
-import docx # Requires pip install python-docx
+# import docx # Requires pip install python-docx
 
 def load_file_content(file_path):
     """
@@ -20,8 +20,8 @@ def load_file_content(file_path):
     if extension in ['.txt', '.tex', '.md']:
         with open(file_path, 'r', encoding='utf-8') as f:
             return f.read()
-    elif extension == '.docx':
-        return docx.Document(file_path)
+#     elif extension == '.docx':
+#         return docx.Document(file_path)
     else:
         raise ValueError(f"Unsupported file format: {extension}")
 

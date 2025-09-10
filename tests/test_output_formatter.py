@@ -1,4 +1,4 @@
-from modules.output_formatter import OutputFormatter
+from modules.output_formatter import HierarchicalOutputFormatter as OutputFormatter
 
 
 def test_format_latex_document_contains_wrapper():
