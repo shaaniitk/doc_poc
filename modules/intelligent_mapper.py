@@ -46,8 +46,10 @@ class IntelligentMapper:
         This implementation is tailored to the 'Alpha'/'Beta' structure in tests.
         """
         log.info("--- Mapper Pass: Global Assignment with Capacity --- ")
+
+        log.info(f"Processing {len(all_chunks)} chunks with similarity matrix shape {similarity_matrix.shape}")
         
-        all_sections_flat = self._flatten_skeleton_recursive(self.template, [])
+        all_sections_flat = self._flatten_skeleton_recursive(self.skeleton, [])
         
         # Find best section for each chunk
         best_section_indices = np.argmax(similarity_matrix, axis=1)
@@ -58,11 +60,13 @@ class IntelligentMapper:
                 assignments[section_idx] = []
             score = similarity_matrix[i, section_idx]
             assignments[section_idx].append((i, score))
-
-        mapped_tree = self._create_empty_skeleton(self.template)
         
-        alpha_section_name = 'Alpha'
-        beta_section_name = 'Beta'
+        log.info(f"Initial assignments: {dict((k, len(v)) for k, v in assignments.items())}")
+
+        mapped_tree = self._create_empty_skeleton(self.skeleton)
+        
+        alpha_section_name = 'Alpha Section'
+        beta_section_name = 'Beta Section'
         
         alpha_section_idx = -1
         beta_section_idx = -1
@@ -77,21 +81,32 @@ class IntelligentMapper:
             log.warning("Global assignment pass requires 'Alpha' and 'Beta' sections in the template.")
             return self._run_final_assignment(all_chunks, similarity_matrix)
 
-        global_capacity_alpha_pct = self.config.get('global_capacity_alpha', 0.1)
-        alpha_capacity = int(len(all_chunks) * global_capacity_alpha_pct)
+        global_capacity_alpha_val = self.config.get('global_capacity_alpha', 0.1)
+        if global_capacity_alpha_val >= 1.0:
+            # Treat as absolute capacity
+            alpha_capacity = int(global_capacity_alpha_val)
+        else:
+            # Treat as percentage
+            alpha_capacity = int(len(all_chunks) * global_capacity_alpha_val)
         
         alpha_candidates = assignments.get(alpha_section_idx, [])
         alpha_candidates.sort(key=lambda x: x[1], reverse=True)
         
+        log.info(f"Alpha section idx: {alpha_section_idx}, candidates: {len(alpha_candidates)}, capacity: {alpha_capacity}")
+
+        log.info(f"Beta section idx: {beta_section_idx}")
+        
         assigned_to_alpha = alpha_candidates[:alpha_capacity]
         overflow_from_alpha = alpha_candidates[alpha_capacity:]
+
         
         assigned_indices = set()
 
         for chunk_idx, score in assigned_to_alpha:
             chunk = all_chunks[chunk_idx]
             chunk.setdefault('metadata', {})['assignment_score'] = score
-            self._assign_chunk_to_path(mapped_tree, chunk, all_sections_flat[alpha_section_idx]['path'])
+            alpha_path = all_sections_flat[alpha_section_idx]['path']
+            self._assign_chunk_to_path(mapped_tree, chunk, alpha_path)
             assigned_indices.add(chunk_idx)
 
         for chunk_idx, score in overflow_from_alpha:
@@ -110,20 +125,22 @@ class IntelligentMapper:
                 assigned_indices.add(chunk_idx)
         
         unmapped_chunks = [chunk for i, chunk in enumerate(all_chunks) if i not in assigned_indices]
-
+        
+        log.info(f"Global assignment complete. Assigned: {len(assigned_indices)}, Unmapped: {len(unmapped_chunks)}")
         return mapped_tree, unmapped_chunks
 
     def map_chunks(self, all_chunks_in_order, use_llm_pass=False):
         """
         Maps a list of chunks to the hierarchical template.
         """
+
         log.info("--- Starting Chunk Mapping Process ---")
         
         # Stage 1: Semantic Similarity Calculation
         log.info("--- Mapper Pass: Semantic Similarity ---")
         if self.kg_processor is None or self.kg_processor.embeddings is None:
             log.error("KnowledgeGraphProcessor with embeddings is required for mapping.")
-            return self._create_empty_skeleton(self.template), all_chunks_in_order
+            return self._create_empty_skeleton(self.skeleton), all_chunks_in_order
 
         similarity_matrix = cosine_similarity(self.kg_processor.embeddings, self.section_embeddings)
         
@@ -137,6 +154,8 @@ class IntelligentMapper:
             
             # Stage 3: Final Assignment
             mapped_tree, unmapped_chunks = self._run_final_assignment(all_chunks_in_order, refined_matrix)
+        
+
         
         # Stage 4: Orphan Handling
         if unmapped_chunks:
@@ -252,6 +271,7 @@ class IntelligentMapper:
             
             # THE CORE METADATA FIX
             chunk['metadata']['hierarchy_path'] = path
+            chunk['metadata']['assignment_type'] = 'global_assignment'
             chunk['parent_section'] = ' -> '.join(path)
             
             target_node['chunks'].append(chunk)

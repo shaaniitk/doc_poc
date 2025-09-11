@@ -29,9 +29,9 @@ class SemanticValidationError(ProcessingError):
     pass
 
 class SemanticValidator:
-    """🧠 SEMANTIC VALIDATION ENGINE
+    """SEMANTIC VALIDATION ENGINE
     
-    Uses state-of-the-art sentence transformers to validate semantic
+    Uses advanced sentence transformers to validate semantic
     coherence and content preservation during LLM processing.
     
     VALIDATION STRATEGIES:
@@ -46,7 +46,7 @@ class SemanticValidator:
     """
     
     def __init__(self, model_config=None, similarity_threshold=0.75):
-        """🎯 INITIALIZE SEMANTIC VALIDATOR
+        """INITIALIZE SEMANTIC VALIDATOR
         
         Args:
             model_config: Configuration dict for embedding model (uses SEMANTIC_MAPPING_CONFIG if None)
@@ -58,7 +58,7 @@ class SemanticValidator:
         self.model = None  # Lazy loading for better startup performance
         self.logger = logging.getLogger(__name__)
         
-        # 📊 Performance tracking
+        # Performance tracking
         self.validation_stats = {
             'total_validations': 0,
             'passed_validations': 0,
@@ -67,7 +67,7 @@ class SemanticValidator:
         }
     
     def _load_model(self):
-        """🔄 LAZY MODEL LOADING
+        """LAZY MODEL LOADING
         
         Loads the embedding model only when needed
         to improve startup performance and memory usage.
@@ -82,7 +82,7 @@ class SemanticValidator:
     
     def validate_content_preservation(self, original: str, processed: str, 
                                     threshold: Optional[float] = None) -> Tuple[bool, float]:
-        """🔍 VALIDATE CONTENT PRESERVATION
+        """VALIDATE CONTENT PRESERVATION
         
         Validates that processed content preserves the semantic meaning
         of the original content using cosine similarity.
@@ -95,7 +95,7 @@ class SemanticValidator:
         Returns:
             tuple: (is_valid, similarity_score)
             
-        🧠 VALIDATION PROCESS:
+        VALIDATION PROCESS:
         1. Generate embeddings for both texts
         2. Calculate cosine similarity
         3. Compare against threshold
@@ -103,21 +103,21 @@ class SemanticValidator:
         """
         self._load_model()
         
-        # 🎯 Use custom threshold or default
+        # Use custom threshold or default
         validation_threshold = threshold or self.similarity_threshold
         
         try:
-            # 🧠 Generate embeddings
+            # Generate embeddings
             original_embedding = self.model.encode(original, convert_to_tensor=True)
             processed_embedding = self.model.encode(processed, convert_to_tensor=True)
             
-            # 📊 Calculate cosine similarity
+            # Calculate cosine similarity
             similarity = self._cosine_similarity(original_embedding, processed_embedding)
             
-            # ✅ Validate against threshold
+            # Validate against threshold
             is_valid = similarity >= validation_threshold
             
-            # 📈 Update statistics
+            # Update statistics
             self._update_stats(similarity, is_valid)
             
             self.logger.debug(f"Semantic validation: {similarity:.3f} (threshold: {validation_threshold:.3f})")
@@ -130,7 +130,7 @@ class SemanticValidator:
     
     def validate_batch(self, content_pairs: List[Tuple[str, str]], 
                       threshold: Optional[float] = None) -> List[Tuple[bool, float]]:
-        """🚀 BATCH SEMANTIC VALIDATION
+        """BATCH SEMANTIC VALIDATION
         
         Efficiently validates multiple content pairs using batch processing
         for improved performance.
@@ -142,7 +142,7 @@ class SemanticValidator:
         Returns:
             List of (is_valid, similarity_score) tuples
             
-        ⚡ PERFORMANCE OPTIMIZATION:
+        PERFORMANCE OPTIMIZATION:
         Batch encoding reduces model overhead and improves throughput
         for multiple validations.
         """
@@ -152,15 +152,15 @@ class SemanticValidator:
         results = []
         
         try:
-            # 📦 Prepare texts for batch processing
+            # Prepare texts for batch processing
             originals = [pair[0] for pair in content_pairs]
             processed = [pair[1] for pair in content_pairs]
             
-            # 🧠 Batch encode for efficiency
+            # Batch encode for efficiency
             original_embeddings = self.model.encode(originals, convert_to_tensor=True)
             processed_embeddings = self.model.encode(processed, convert_to_tensor=True)
             
-            # 📊 Calculate similarities for all pairs
+            # Calculate similarities for all pairs
             for i in range(len(content_pairs)):
                 similarity = self._cosine_similarity(
                     original_embeddings[i], processed_embeddings[i]
@@ -178,7 +178,7 @@ class SemanticValidator:
             raise SemanticValidationError(f"Batch validation error: {e}")
     
     def calculate_relevance_score(self, content: str, context: str) -> float:
-        """🎯 CALCULATE CONTENT RELEVANCE
+        """CALCULATE CONTENT RELEVANCE
         
         Calculates semantic relevance between content and context
         for intelligent context management.
@@ -190,18 +190,18 @@ class SemanticValidator:
         Returns:
             float: Relevance score (0.0 to 1.0)
             
-        🧠 CONTEXT MANAGEMENT:
+        CONTEXT MANAGEMENT:
         Used by smart context managers to determine which context
         items are most relevant for current processing.
         """
         self._load_model()
         
         try:
-            # 🧠 Generate embeddings
+            # Generate embeddings
             content_embedding = self.model.encode(content, convert_to_tensor=True)
             context_embedding = self.model.encode(context, convert_to_tensor=True)
             
-            # 📊 Calculate relevance as cosine similarity
+            # Calculate relevance as cosine similarity
             relevance = self._cosine_similarity(content_embedding, context_embedding)
             
             return float(relevance)
@@ -211,7 +211,7 @@ class SemanticValidator:
             return 0.0  # Return low relevance on error
     
     def assess_content_coherence(self, content_sections: List[str]) -> float:
-        """🔗 ASSESS CONTENT COHERENCE
+        """ASSESS CONTENT COHERENCE
         
         Evaluates overall coherence across multiple content sections
         by analyzing semantic relationships.
@@ -222,7 +222,7 @@ class SemanticValidator:
         Returns:
             float: Coherence score (0.0 to 1.0)
             
-        🧠 COHERENCE ANALYSIS:
+        COHERENCE ANALYSIS:
         Calculates pairwise similarities between sections and
         returns average coherence score.
         """
@@ -232,17 +232,17 @@ class SemanticValidator:
         self._load_model()
         
         try:
-            # 🧠 Generate embeddings for all sections
+            # Generate embeddings for all sections
             embeddings = self.model.encode(content_sections, convert_to_tensor=True)
             
-            # 📊 Calculate pairwise similarities
+            # Calculate pairwise similarities
             similarities = []
             for i in range(len(embeddings)):
                 for j in range(i + 1, len(embeddings)):
                     similarity = self._cosine_similarity(embeddings[i], embeddings[j])
                     similarities.append(similarity)
             
-            # 🎯 Return average coherence
+            # Return average coherence
             coherence_score = float(np.mean(similarities)) if similarities else 1.0
             
             self.logger.debug(f"Content coherence: {coherence_score:.3f}")
@@ -253,28 +253,50 @@ class SemanticValidator:
             return 0.5  # Return neutral score on error
     
     def _cosine_similarity(self, embedding1, embedding2) -> float:
-        """📊 CALCULATE COSINE SIMILARITY
+        """CALCULATE COSINE SIMILARITY
         
         Calculates cosine similarity between two embeddings.
+        Handles both PyTorch tensors and numpy arrays.
         
         Args:
-            embedding1: First embedding tensor
-            embedding2: Second embedding tensor
+            embedding1: First embedding (tensor or numpy array)
+            embedding2: Second embedding (tensor or numpy array)
             
         Returns:
             float: Cosine similarity score
         """
         import torch
+        import numpy as np
         
-        # 📊 Calculate cosine similarity
+        # Convert numpy arrays to tensors if needed
+        if isinstance(embedding1, np.ndarray):
+            embedding1 = torch.from_numpy(embedding1)
+        if isinstance(embedding2, np.ndarray):
+            embedding2 = torch.from_numpy(embedding2)
+        
+        # Ensure tensors are float type
+        embedding1 = embedding1.float()
+        embedding2 = embedding2.float()
+        
+        # Calculate cosine similarity
+        # Handle different tensor dimensions
+        if embedding1.dim() == 1:
+            embedding1 = embedding1.unsqueeze(0)
+        if embedding2.dim() == 1:
+            embedding2 = embedding2.unsqueeze(0)
+            
         similarity = torch.nn.functional.cosine_similarity(
-            embedding1.unsqueeze(0), embedding2.unsqueeze(0)
+            embedding1, embedding2, dim=1
         )
         
-        return float(similarity.item())
+        # Extract scalar value
+        if similarity.numel() == 1:
+            return float(similarity.item())
+        else:
+            return float(similarity[0].item())
     
     def _update_stats(self, similarity: float, is_valid: bool):
-        """📈 UPDATE PERFORMANCE STATISTICS
+        """UPDATE PERFORMANCE STATISTICS
         
         Updates internal performance tracking statistics.
         
@@ -289,7 +311,7 @@ class SemanticValidator:
         else:
             self.validation_stats['failed_validations'] += 1
         
-        # 📊 Update running average
+        # Update running average
         total = self.validation_stats['total_validations']
         current_avg = self.validation_stats['average_similarity']
         self.validation_stats['average_similarity'] = (
@@ -297,7 +319,7 @@ class SemanticValidator:
         )
     
     def validate_content_quality(self, content: str) -> Tuple[bool, float]:
-        """🔍 VALIDATE CONTENT QUALITY
+        """VALIDATE CONTENT QUALITY
         
         Validates content quality based on length, structure, and semantic richness.
         
@@ -371,7 +393,7 @@ class SemanticValidator:
         return is_valid, quality_score
     
     def validate_content_coherence(self, content1: str, content2: str) -> float:
-        """🔗 VALIDATE CONTENT COHERENCE
+        """VALIDATE CONTENT COHERENCE
         
         Validates coherence between two pieces of content using semantic similarity.
         
@@ -405,7 +427,7 @@ class SemanticValidator:
             return 0.0
     
     def get_validation_stats(self) -> Dict[str, float]:
-        """📊 GET VALIDATION STATISTICS
+        """GET VALIDATION STATISTICS
         
         Returns performance statistics for monitoring and optimization.
         
@@ -414,7 +436,7 @@ class SemanticValidator:
         """
         stats = self.validation_stats.copy()
         
-        # 📈 Calculate success rate
+        # Calculate success rate
         if stats['total_validations'] > 0:
             stats['success_rate'] = (
                 stats['passed_validations'] / stats['total_validations']
@@ -425,7 +447,7 @@ class SemanticValidator:
         return stats
     
     def reset_stats(self):
-        """🔄 RESET VALIDATION STATISTICS
+        """RESET VALIDATION STATISTICS
         
         Resets performance tracking statistics.
         """
@@ -440,7 +462,7 @@ class SemanticValidator:
 
 
 class SmartContextManager:
-    """🧠 INTELLIGENT CONTEXT MANAGEMENT SYSTEM
+    """INTELLIGENT CONTEXT MANAGEMENT SYSTEM
     
     Advanced context management with semantic relevance scoring,
     importance weighting, and intelligent pruning strategies.
@@ -457,7 +479,7 @@ class SmartContextManager:
     """
     
     def __init__(self, max_context_length=2000, semantic_validator=None):
-        """🎯 INITIALIZE SMART CONTEXT MANAGER
+        """INITIALIZE SMART CONTEXT MANAGER
         
         Args:
             max_context_length: Maximum context size in characters
@@ -467,12 +489,12 @@ class SmartContextManager:
         self.semantic_validator = semantic_validator or SemanticValidator()
         self.logger = logging.getLogger(__name__)
         
-        # 📚 Context storage with metadata
+        # Context storage with metadata
         self.context_items = []  # List of ContextItem objects
         self.document_context = ""
         self.section_contexts = {}
         
-        # 📊 Performance tracking
+        # Performance tracking
         self.context_stats = {
             'total_additions': 0,
             'pruning_events': 0,
@@ -480,7 +502,7 @@ class SmartContextManager:
         }
     
     def build_context(self, queries: List[str], documents: List[str], max_length: int = None) -> str:
-        """🎯 BUILD SMART CONTEXT
+        """BUILD SMART CONTEXT
         
         Builds intelligent context by selecting most relevant documents for given queries.
         
@@ -538,7 +560,7 @@ class SmartContextManager:
         return result
     
     def create_section_summary(self, section_name: str, content: str) -> str:
-        """📝 CREATE SECTION SUMMARY
+        """CREATE SECTION SUMMARY
         
         Creates an intelligent summary of section content for context management.
         
@@ -586,7 +608,7 @@ class SmartContextManager:
     
     def add_context(self, content: str, section_name: str = None, 
                    importance_score: float = 1.0, context_type: str = "general"):
-        """📝 ADD CONTEXT WITH INTELLIGENCE
+        """ADD CONTEXT WITH INTELLIGENCE
         
         Adds context with importance weighting and semantic analysis.
         
@@ -596,7 +618,7 @@ class SmartContextManager:
             importance_score: Importance weight (0.0 to 1.0)
             context_type: Type of context (general, section, summary)
             
-        🧠 INTELLIGENT PROCESSING:
+        INTELLIGENT PROCESSING:
         1. Calculate semantic relevance to existing context
         2. Apply importance weighting
         3. Prune context if size limits exceeded
@@ -604,7 +626,7 @@ class SmartContextManager:
         """
         from datetime import datetime
         
-        # 🎯 Create context item with metadata
+        # Create context item with metadata
         context_item = {
             'content': content,
             'section_name': section_name,
@@ -615,35 +637,35 @@ class SmartContextManager:
             'relevance_score': 0.0
         }
         
-        # 🧠 Calculate relevance to existing context
+        # Calculate relevance to existing context
         if self.document_context:
             relevance = self.semantic_validator.calculate_relevance_score(
                 content, self.document_context
             )
             context_item['relevance_score'] = relevance
         
-        # 📝 Add to context storage
+        # Add to context storage
         self.context_items.append(context_item)
         
-        # 🔄 Update section-specific context
+        # Update section-specific context
         if section_name:
             if section_name not in self.section_contexts:
                 self.section_contexts[section_name] = []
             self.section_contexts[section_name].append(context_item)
         
-        # 📊 Update statistics
+        # Update statistics
         self.context_stats['total_additions'] += 1
         
-        # 🧹 Prune if necessary
+        # Prune if necessary
         self._prune_context_if_needed()
         
-        # 🔄 Rebuild document context
+        # Rebuild document context
         self._rebuild_document_context()
         
         self.logger.debug(f"Added context: {len(content)} chars, relevance: {context_item['relevance_score']:.3f}")
     
     def get_relevant_context(self, current_content: str, max_items: int = 5) -> str:
-        """🎯 GET MOST RELEVANT CONTEXT
+        """GET MOST RELEVANT CONTEXT
         
         Retrieves the most relevant context items for current processing
         based on semantic similarity and importance scores.
@@ -655,22 +677,22 @@ class SmartContextManager:
         Returns:
             str: Formatted relevant context
             
-        🧠 RELEVANCE RANKING:
+        RELEVANCE RANKING:
         Combines semantic similarity with importance scores to
         select the most valuable context for current processing.
         """
         if not self.context_items:
             return ""
         
-        # 📊 Score all context items for relevance
+        # Score all context items for relevance
         scored_items = []
         for item in self.context_items:
-            # 🧠 Calculate relevance to current content
+            # Calculate relevance to current content
             relevance = self.semantic_validator.calculate_relevance_score(
                 current_content, item['content']
             )
             
-            # 🎯 Combine with importance and recency
+            # Combine with importance and recency
             from datetime import datetime, timedelta
             age_hours = (datetime.now() - item['timestamp']).total_seconds() / 3600
             recency_factor = max(0.1, 1.0 - (age_hours / 24))  # Decay over 24 hours
@@ -683,14 +705,14 @@ class SmartContextManager:
             
             scored_items.append((combined_score, item))
             
-            # 📈 Update usage statistics
+            # Update usage statistics
             item['usage_count'] += 1
         
-        # 🏆 Sort by combined score and take top items
+        # Sort by combined score and take top items
         scored_items.sort(key=lambda x: x[0], reverse=True)
         top_items = scored_items[:max_items]
         
-        # 📝 Format context
+        # Format context
         context_parts = []
         for score, item in top_items:
             context_type = item['context_type'].upper()
@@ -703,7 +725,7 @@ class SmartContextManager:
         return relevant_context
     
     def _prune_context_if_needed(self):
-        """🧹 INTELLIGENT CONTEXT PRUNING
+        """INTELLIGENT CONTEXT PRUNING
         
         Prunes context when size limits are exceeded, keeping
         the most important and relevant items.
@@ -713,10 +735,10 @@ class SmartContextManager:
         if current_size <= self.max_context_length:
             return  # No pruning needed
         
-        # 📊 Score items for retention
+        # Score items for retention
         scored_items = []
         for item in self.context_items:
-            # 🎯 Retention score based on importance, relevance, and usage
+            # Retention score based on importance, relevance, and usage
             retention_score = (
                 item['importance_score'] * 0.4 +
                 item['relevance_score'] * 0.4 +
@@ -724,10 +746,10 @@ class SmartContextManager:
             )
             scored_items.append((retention_score, item))
         
-        # 🏆 Sort by retention score
+        # Sort by retention score
         scored_items.sort(key=lambda x: x[0], reverse=True)
         
-        # 🧹 Keep items until size limit
+        # Keep items until size limit
         pruned_items = []
         current_size = 0
         
@@ -738,17 +760,17 @@ class SmartContextManager:
             else:
                 break
         
-        # 🔄 Update context storage
+        # Update context storage
         removed_count = len(self.context_items) - len(pruned_items)
         self.context_items = pruned_items
         
-        # 📊 Update statistics
+        # Update statistics
         if removed_count > 0:
             self.context_stats['pruning_events'] += 1
             self.logger.info(f"Pruned {removed_count} context items")
     
     def _rebuild_document_context(self):
-        """🔄 REBUILD DOCUMENT CONTEXT
+        """REBUILD DOCUMENT CONTEXT
         
         Rebuilds the document context from current context items.
         """
@@ -756,7 +778,7 @@ class SmartContextManager:
             self.document_context = ""
             return
         
-        # 📝 Build context from most important items
+        # Build context from most important items
         context_parts = []
         for item in sorted(self.context_items, 
                           key=lambda x: x['importance_score'], reverse=True):
@@ -766,7 +788,7 @@ class SmartContextManager:
         self.document_context = "\n\n".join(context_parts)
     
     def get_context_stats(self) -> Dict[str, float]:
-        """📊 GET CONTEXT MANAGEMENT STATISTICS
+        """GET CONTEXT MANAGEMENT STATISTICS
         
         Returns context management performance statistics.
         
@@ -775,7 +797,7 @@ class SmartContextManager:
         """
         stats = self.context_stats.copy()
         
-        # 📈 Calculate additional metrics
+        # Calculate additional metrics
         if self.context_items:
             avg_relevance = sum(item['relevance_score'] for item in self.context_items) / len(self.context_items)
             stats['average_relevance'] = avg_relevance

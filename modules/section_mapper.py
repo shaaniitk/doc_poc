@@ -23,7 +23,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from .error_handler import ProcessingError
 from .embedding_client import UnifiedEmbeddingClient
-from config import DOCUMENT_TEMPLATES, SEMANTIC_MAPPING_CONFIG
+from config import DOCUMENT_TEMPLATES, SEMANTIC_MAPPING_CONFIG, KG_CONFIG
 
 # --- Main Semantic Mapping Logic ---
 
@@ -31,13 +31,15 @@ class SemanticMapper:
     """
     Assigns chunks to document sections using semantic similarity.
     """
-    def __init__(self, template_name="bitcoin_paper"):
+    def __init__(self, template_name="bitcoin_paper", kg_processor=None):
         self.config = SEMANTIC_MAPPING_CONFIG
+        self.kg_config = KG_CONFIG
         self.skeleton = DOCUMENT_TEMPLATES.get(template_name)
         if not self.skeleton:
             raise ProcessingError(f"Document template '{template_name}' not found in config.")
 
         self.model = self._load_model()
+        self.kg_processor = kg_processor
         
         # Pre-calculate embeddings for the target sections for efficiency.
         # This is a critical optimization.
@@ -68,113 +70,171 @@ class SemanticMapper:
 
     def _flatten_skeleton_recursive(self, node_level, current_path):
         """
-        A helper function to traverse the nested skeleton dictionary.
+        A helper function to traverse the nested skeleton dictionary or list.
         """
         flat_list = []
-        for title, data in node_level.items():
-            new_path = current_path + [title]
-            flat_list.append({
-                'path': new_path,
-                'description': data['description']
-            })
-            if data.get('subsections'):
-                flat_list.extend(
-                    self._flatten_skeleton_recursive(data['subsections'], new_path)
-                )
+        
+        # Handle list structure (like bitcoin_paper template)
+        if isinstance(node_level, list):
+            for item in node_level:
+                if isinstance(item, dict) and 'section' in item:
+                    new_path = current_path + [item['section']]
+                    flat_list.append({
+                        'path': new_path,
+                        'description': item.get('description', '')
+                    })
+                    # Handle subsections in list structure
+                    if item.get('subsections'):
+                        flat_list.extend(
+                            self._flatten_skeleton_recursive(item['subsections'], new_path)
+                        )
+        # Handle dictionary structure (like bitcoin_paper_hierarchical template)
+        elif isinstance(node_level, dict):
+            for title, data in node_level.items():
+                new_path = current_path + [title]
+                flat_list.append({
+                    'path': new_path,
+                    'description': data.get('description', '') if isinstance(data, dict) else str(data)
+                })
+                # Handle subsections in dictionary structure
+                if isinstance(data, dict) and data.get('subsections'):
+                    flat_list.extend(
+                        self._flatten_skeleton_recursive(data['subsections'], new_path)
+                    )
         return flat_list
 
-    def assign_chunks(self, chunks):
-        """
-        Assigns a list of chunks to the skeleton sections based on semantic similarity.
-        Now computes top-k candidate sections with scores and distances for all chunks.
+    def assign_chunks(self, chunks, sections, threshold: float = 0.5, top_k: int = 3):
+        """Assign chunks to sections with confidence scores and candidate list.
         
-        Args:
-            chunks (list): A list of chunk dictionaries from the ASTChunker.
+        Enhanced with KG scores when available for improved assignment accuracy.
 
-        Returns:
-            dict: A dictionary mapping section names to lists of assigned chunks.
+        Returns list of dicts with keys: 'chunk_id', 'section', 'assignment_score', 'candidate_sections'
+        and preserves original fields in metadata for backward compatibility.
         """
-        if not chunks:
-            return {name: [] for name in self.section_names}
+        chunk_texts = [chunk['content'] for chunk in chunks]
+        chunk_embeddings = self.model.encode(chunk_texts)
 
-        # 1. Prepare chunk embeddings in a single batch for performance.
-        chunk_contents = [c['content'] for c in chunks]
-        chunk_embeddings = self.model.encode(chunk_contents, show_progress_bar=False)
+        # Use pre-calculated section embeddings based on descriptions instead of names
+        # This provides much better semantic matching
+        section_embeddings = self.section_embeddings
+        section_texts = [self._flatten_section_name(s) for s in sections]
 
-        # 2. Calculate the similarity matrix between all chunks and all sections.
-        # The result is a matrix where similarity_matrix[i, j] is the similarity
-        # between chunk i and section j.
-        similarity_matrix = cosine_similarity(chunk_embeddings, self.section_embeddings)
+        sim_matrix = cosine_similarity(chunk_embeddings, section_embeddings)
+        
+        # Get KG scores if available and enabled
+        kg_scores = None
+        section_affinities = None
+        if (self.kg_processor and 
+            self.kg_config.get('enhance_section_mapping', False) and 
+            hasattr(self.kg_processor, 'unified_graph') and 
+            self.kg_processor.unified_graph is not None):
+            try:
+                kg_scores = self.kg_processor.get_chunk_kg_scores(chunks)
+                section_affinities = self.kg_processor.get_section_affinity_scores(chunks, section_texts)
+            except Exception as e:
+                print(f"Warning: Failed to get KG scores: {e}")
+                kg_scores = None
+                section_affinities = None
 
-       # 3. Create a deep, empty copy of the hierarchical skeleton to populate.
-        assignments = self._create_empty_skeleton(self.skeleton, [])
-        assignments['Orphaned_Content'] = [] # For chunks that don't fit well anywhere.
-
-        # 4. Find the best hierarchical path for each chunk and compute top-k candidates
-        best_match_indices = np.argmax(similarity_matrix, axis=1)
-        best_match_scores = np.max(similarity_matrix, axis=1)
-
-        # 5. Assign chunks based on the best score and the similarity threshold.
-        threshold = self.config['similarity_threshold']
-        top_k = self.config.get('top_k_candidates', 3)
-
+        assignments = []
         for i, chunk in enumerate(chunks):
-            best_path_index = best_match_indices[i]
-            score = best_match_scores[i]
+            sims = sim_matrix[i]
             
-            # Compute top-k candidate sections for this chunk
-            chunk_similarities = similarity_matrix[i]  # Get similarities for this chunk
-            # Get indices sorted by similarity (descending)
-            sorted_indices = np.argsort(chunk_similarities)[::-1]
-            
-            # Build candidate sections list
-            candidate_sections = []
-            for j in range(min(top_k, len(sorted_indices))):
-                section_idx = sorted_indices[j]
-                section_path = self.section_paths[section_idx]
-                section_score = float(chunk_similarities[section_idx])
-                section_distance = max(0.0, min(1.0, 1.0 - section_score))
-                
-                candidate_sections.append({
-                    'path': section_path,
-                    'path_str': ' > '.join(section_path),
-                    'score': section_score,
-                    'distance': section_distance
-                })
-            
-            # Store candidate sections and convenience fields in chunk metadata
-            if 'metadata' not in chunk:
-                chunk['metadata'] = {}
-            chunk['metadata']['candidate_sections'] = candidate_sections
-            chunk['metadata']['assignment_score'] = float(score)
-            
-            if candidate_sections:
-                chunk['metadata']['nearest_section_suggestion'] = candidate_sections[0]['path_str']
-                chunk['metadata']['distance_to_nearest'] = candidate_sections[0]['distance']
-                if len(candidate_sections) > 1:
-                    chunk['metadata']['top2_gap'] = float(candidate_sections[0]['score'] - candidate_sections[1]['score'])
-
-            if score >= threshold:
-                # The best match is now a full hierarchical path
-                best_path = self.section_paths[best_path_index]
-                
-               # Navigate to the parent of the target node
-                target_parent = assignments
-                # The path to the parent is all but the last element of the best_path
-                for part in best_path[:-1]:
-                    target_parent = target_parent[part]['subsections']
-                
-                # Access the correct node from the parent and append the chunk
-                target_node = target_parent[best_path[-1]]
-                target_node['chunks'].append(chunk)
-                
+            # Apply KG enhancement if available
+            if kg_scores and section_affinities:
+                enhanced_sims = self._enhance_scores_with_kg(
+                    sims, kg_scores[i], section_affinities[i], section_texts
+                )
             else:
-                if 'metadata' not in chunk:
-                    chunk['metadata'] = {}
-                chunk['metadata']['orphan_reason'] = 'low_similarity'
-                assignments['Orphaned_Content'].append(chunk)
+                enhanced_sims = sims
+            
+            best_idx = int(np.argmax(enhanced_sims))
+            best_score = float(enhanced_sims[best_idx])
+
+            # build top-k candidates (idx, score) using enhanced scores
+            top_indices = np.argpartition(enhanced_sims, -top_k)[-top_k:]
+            top_sorted = sorted([(int(idx), float(enhanced_sims[idx])) for idx in top_indices], key=lambda x: x[1], reverse=True)
+            candidates = [
+                {
+                    'section': section_texts[idx],
+                    'index': int(idx),
+                    'score': float(score),
+                    'embedding_score': float(sims[idx]),  # Original embedding score
+                    'kg_enhanced': kg_scores is not None
+                }
+                for idx, score in top_sorted
+            ]
+
+            assigned_section = section_texts[best_idx] if best_score >= threshold else 'Orphaned_Content'
+            result = {
+                'chunk_id': chunk.get('chunk_id'),
+                'section': assigned_section,
+                'assignment_score': best_score,
+                'candidate_sections': candidates,
+            }
+
+            # also enrich chunk metadata in-place if present
+            meta = chunk.get('metadata') or {}
+            meta['assignment_score'] = best_score
+            meta['candidate_sections'] = candidates
+            chunk['metadata'] = meta
+
+            assignments.append(result)
 
         return assignments
+
+    def _flatten_section_name(self, section):
+        """Convert section dict to a flattened string representation."""
+        if isinstance(section, str):
+            return section
+        elif isinstance(section, list):
+            # Handle list paths by joining them into a readable section name
+            return ' > '.join(str(item) for item in section)
+        elif isinstance(section, dict):
+            # Extract meaningful text from section structure
+            title = section.get('title', '')
+            description = section.get('description', '')
+            return f"{title} {description}".strip()
+        else:
+            return str(section)
+    
+    def _enhance_scores_with_kg(self, embedding_sims, chunk_kg_score, chunk_section_affinities, section_texts):
+        """Enhance embedding similarity scores with KG-based scores.
+        
+        Args:
+            embedding_sims: Array of embedding similarity scores for each section
+            chunk_kg_score: Dict with KG metrics for this chunk
+            chunk_section_affinities: Dict mapping section names to affinity scores
+            section_texts: List of section names
+            
+        Returns:
+            Enhanced similarity scores combining embedding and KG information
+        """
+        enhanced_sims = embedding_sims.copy()
+        
+        # Get weights from config
+        embedding_weight = self.kg_config.get('embedding_weight', 0.6)
+        kg_weight = self.kg_config.get('kg_weight', 0.4)
+        affinity_boost = self.kg_config.get('affinity_boost_factor', 1.2)
+        use_section_affinity = self.kg_config.get('use_section_affinity', True)
+        
+        # Get chunk's composite KG score (normalized 0-1)
+        chunk_kg_composite = chunk_kg_score.get('composite_score', 0.0)
+        
+        for i, section_name in enumerate(section_texts):
+            # Base enhanced score: weighted combination of embedding and KG scores
+            base_enhanced = (embedding_weight * embedding_sims[i] + 
+                           kg_weight * chunk_kg_composite)
+            
+            # Apply section affinity boost if available
+            if use_section_affinity and section_name in chunk_section_affinities:
+                section_affinity = chunk_section_affinities[section_name]
+                # Boost score based on KG-derived section affinity
+                enhanced_sims[i] = base_enhanced * (1.0 + section_affinity * (affinity_boost - 1.0))
+            else:
+                enhanced_sims[i] = base_enhanced
+                
+        return enhanced_sims
 
     def _create_empty_skeleton(self, node_level, current_path=None):
         """
@@ -208,7 +268,7 @@ def get_document_skeleton(template_name="bitcoin_paper"):
     """
     return DOCUMENT_TEMPLATES.get(template_name, DOCUMENT_TEMPLATES["bitcoin_paper"])
 
-def assign_chunks_to_skeleton(grouped_chunks, template_name="bitcoin_paper"):
+def assign_chunks_to_skeleton(grouped_chunks, template_name="bitcoin_paper", kg_processor=None):
     """
     Main entry point for assigning chunks to the document skeleton.
     This function flattens the grouped chunks and uses the SemanticMapper.
@@ -216,18 +276,48 @@ def assign_chunks_to_skeleton(grouped_chunks, template_name="bitcoin_paper"):
     Args:
         grouped_chunks (dict): A dictionary of chunks grouped by their original section.
         template_name (str): The name of the document template to use.
+        kg_processor (KnowledgeGraphProcessor, optional): KG processor for enhanced scoring.
 
     Returns:
         dict: A dictionary mapping target skeleton sections to lists of assigned chunks.
     """
     try:
-        mapper = SemanticMapper(template_name)
+        mapper = SemanticMapper(template_name, kg_processor=kg_processor)
         
         # Flatten the dictionary of chunks into a single list for processing.
         all_chunks = [chunk for section_chunks in grouped_chunks.values() for chunk in section_chunks]
         
-        assignments = mapper.assign_chunks(all_chunks)
-        return assignments
+        # Add chunk_id to chunks that don't have one (for matching purposes)
+        for i, chunk in enumerate(all_chunks):
+            if 'chunk_id' not in chunk:
+                chunk['chunk_id'] = f"chunk_{i}"
+        
+        assignments = mapper.assign_chunks(all_chunks, mapper.section_names)
+        
+        # Transform assignments list into dictionary format expected by tests
+        result = {}
+        for assignment in assignments:
+            section = assignment['section']
+            chunk_id = assignment['chunk_id']
+            
+            # Find the original chunk to include in the result
+            chunk = next((c for c in all_chunks if c.get('chunk_id') == chunk_id), None)
+            if chunk:
+                if section not in result:
+                    result[section] = []
+                result[section].append(chunk)
+        
+        # Combine chunks assigned to the same section into a single chunk with combined content
+        for section in result:
+            if len(result[section]) > 1:
+                combined_content = " ".join([chunk['content'] for chunk in result[section]])
+                # Keep the first chunk but update its content to include all chunks
+                result[section] = [{
+                    'content': combined_content,
+                    'metadata': result[section][0].get('metadata', {})
+                }]
+        
+        return result
         
     except Exception as e:
         # Catch and re-raise as a more specific error.

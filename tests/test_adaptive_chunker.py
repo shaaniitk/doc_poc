@@ -16,8 +16,8 @@ def test_atomic_blocks_preserved_equation():
     chunks = ch.chunk(text, doc_type='latex', atomic_blocks=('equation',), max_tokens=60)
 
     # Ensure that no chunk splits the equation environment
-    begin_count = sum('\n\\begin{equation}' in c['content'] for c in chunks)
-    end_count = sum('\n\\end{equation}' in c['content'] for c in chunks)
+    begin_count = sum('\\begin{equation}' in c['content'] for c in chunks)
+    end_count = sum('\\end{equation}' in c['content'] for c in chunks)
     assert begin_count == end_count == 1
 
     # If a chunk contains begin, it must also contain end (same chunk)

@@ -8,6 +8,9 @@ import os
 import json
 import logging
 from .analysis_engine import DocumentAnalyzer
+from .knowledge_graph_processor import KnowledgeGraphProcessor
+from .embedding_client import UnifiedEmbeddingClient
+from config import SEMANTIC_MAPPING_CONFIG, KG_CONFIG, EMBEDDING_COHESION_CONFIG
 
 # Configure logging
 log = logging.getLogger(__name__)
@@ -71,6 +74,68 @@ def main(session_path, original_source, aug_source=None, template="bitcoin_paper
         with open(report_path, 'w', encoding='utf-8') as f:
             f.write(report)
         log.info(f"  -> Quality report saved to: {report_path}")
+
+        # --- Unified Knowledge Graph Build + Dump (optional, via config) ---
+        try:
+            if KG_CONFIG.get('ENABLE_KG_UNIFIED') and KG_CONFIG.get('DUMP_ON_ANALYSIS'):
+                log.info("Initializing Knowledge Graph build for analysis dump...")
+                
+                # Helper: flatten chunks from a mapped/processed tree
+                def _flatten_chunks(tree_dict):
+                    mapped, orphans = [], []
+                    if isinstance(tree_dict, dict):
+                        orphan_list = tree_dict.get('Orphaned_Content')
+                        if isinstance(orphan_list, list):
+                            orphans.extend([c for c in orphan_list if isinstance(c, dict)])
+                        def walk(level):
+                            for _, node in level.items():
+                                if not isinstance(node, dict):
+                                    continue
+                                chunks = node.get('chunks', [])
+                                if isinstance(chunks, list):
+                                    mapped.extend([c for c in chunks if isinstance(c, dict)])
+                                subs = node.get('subsections')
+                                if isinstance(subs, dict):
+                                    walk(subs)
+                        walk({k: v for k, v in tree_dict.items() if k != 'Orphaned_Content'})
+                    return mapped + orphans
+                
+                all_chunks = []
+                mapped_tree_path = os.path.join(session_path, "2_mapped_tree.json")
+                if os.path.exists(mapped_tree_path):
+                    try:
+                        with open(mapped_tree_path, 'r', encoding='utf-8') as f:
+                            mapped_tree = json.load(f)
+                        all_chunks = _flatten_chunks(mapped_tree)
+                        log.info(f"  -> Loaded {len(all_chunks)} chunks from mapped tree for KG.")
+                    except Exception as e:
+                        log.warning(f"  -> Failed to load mapped tree, falling back to processed tree: {e}")
+                        all_chunks = _flatten_chunks(processed_tree)
+                else:
+                    all_chunks = _flatten_chunks(processed_tree)
+                    log.info(f"  -> Using processed tree with {len(all_chunks)} chunks for KG.")
+
+                # Initialize embedding model consistent with pipeline
+                embedding_model = UnifiedEmbeddingClient(SEMANTIC_MAPPING_CONFIG)
+                kgp = KnowledgeGraphProcessor(all_chunks, embedding_model)
+                compute_cohesion = bool(EMBEDDING_COHESION_CONFIG.get('ENABLE', False))
+                kgp.build_unified_graph(
+                    semantic_top_k=KG_CONFIG.get('SEMANTIC_TOP_K', 5),
+                    semantic_threshold=KG_CONFIG.get('SEMANTIC_THRESHOLD', 0.8),
+                    duplicate_threshold=KG_CONFIG.get('DUPLICATE_THRESHOLD', 0.95),
+                    compute_cohesion=compute_cohesion
+                )
+                dump_path = kgp.dump_unified_graph(
+                    output_dir=session_path,
+                    fmt=KG_CONFIG.get('DUMP_FORMAT', 'json'),
+                    filename=KG_CONFIG.get('DUMP_FILENAME', 'knowledge_graph_unified.json')
+                )
+                if dump_path:
+                    log.info(f"  -> Unified Knowledge Graph dumped: {dump_path}")
+                else:
+                    log.warning("  -> Unified Knowledge Graph dump failed or was skipped.")
+        except Exception as kg_err:
+            log.warning(f"KG build/dump during analysis encountered a non-fatal error: {kg_err}")
 
         # --- Contribution Tracker Report ---
         # Note: A full contribution trace requires integrating the tracker

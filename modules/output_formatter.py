@@ -49,7 +49,8 @@ class HierarchicalOutputFormatter:
         """
         template_map = {
             "latex": "latex_template.tex.j2",
-            "markdown": "markdown_template.md.j2"
+            "markdown": "markdown_template.md.j2",
+            "json": "json_template.json.j2"
         }
         template_name = template_map.get(self.format_type)
 

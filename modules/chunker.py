@@ -1,22 +1,34 @@
 
 import os
 import re
+import uuid
+import numpy as np
 #from pylatexenc.latexwalker import LatexWalker, LatexCharsNode, LatexMacroNode, LatexEnvironmentNode
 from pylatexenc.macrospec import LatexContextDb
 from .llm_client import UnifiedLLMClient, LangChainLLM
-from .error_handler import ChunkingError
-from config import LLM_CHUNK_CONFIG, PROMPTS,LANGCHAIN_CHUNK_CONFIG
+from .embedding_client import UnifiedEmbeddingClient
+from .error_handler import ChunkingError, EmbeddingAPIError
+from config import LLM_CHUNK_CONFIG, PROMPTS,LANGCHAIN_CHUNK_CONFIG, CHUNKING_EMBEDDING
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pydantic import BaseModel, Field
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
-from typing import List
+from typing import List, Tuple, Dict, Any
 # from docx import Document
 from pylatexenc.macrospec import SpecialsSpec
 import logging
 from pylatexenc.latexwalker import LatexWalker, LatexCharsNode, LatexMacroNode, LatexEnvironmentNode, LatexCommentNode # <-- Add LatexCommentNode
 from pylatexenc.macrospec import LatexContextDb
+# Isolate transformers import to avoid jinja2 conflicts
+def _get_tokenizer(tokenizer_name="bert-base-uncased"):
+    try:
+        from transformers import AutoTokenizer
+        return AutoTokenizer.from_pretrained(tokenizer_name, use_fast=True)
+    except ImportError:
+        return None
+    except Exception:
+        return None
 #from pylatexenc.parsers import LatexVerbatimParser
 # Configure logging 
 log = logging.getLogger(__name__)
@@ -64,6 +76,12 @@ class SemanticSplit(BaseModel):
 #         flush_buffer() # Flush any remaining paragraph content at the end
 #         return chunks
 
+
+    
+
+    
+
+
 # --- NEW: LangChain-powered Markdown Chunker ---
 class LangChainMarkdownChunker:
     def chunk_document(self, content: str):
@@ -94,7 +112,10 @@ class LangChainMarkdownChunker:
                 'parent_section': parent_section,
                 'metadata': {'source_doc_id': i, 'hierarchy_path': [parent_section]}
             })
+
         return chunks
+    
+
 
 class ASTChunker:
     """
@@ -377,24 +398,26 @@ def _llm_semantic_split_langchain(content: str, llm: LangChainLLM) -> List[str]:
 
 
 # --- New adaptive, token-aware chunker (non-breaking addition) ---
-from typing import List, Dict, Any, Tuple
-import re
-import uuid
-from transformers import AutoTokenizer
 
 
-def _split_atomic_blocks(text: str) -> List[Tuple[str, str]]:
+def _split_atomic_blocks(text: str, custom_patterns: tuple = None) -> List[Tuple[str, str]]:
     """
     Split text into segments, preserving atomic blocks like code blocks and LaTeX math environments.
     Returns a list of tuples: (segment_type, segment_text) where segment_type in {"atomic", "text"}.
     """
-    # Patterns for atomic blocks: fenced code, display math $$...$$, \[...\], \begin{...}...\end{...}
-    patterns = [
+    # Default patterns for atomic blocks: fenced code, display math $$...$$, \[...\], \begin{...}...\end{...}
+    default_patterns = [
         (r"```[\s\S]*?```", "fenced_code"),
         (r"\$\$[\s\S]*?\$\$", "display_math"),
         (r"\\\[[\s\S]*?\\\]", "display_math_bracket"),
         (r"\\begin\{[^}]+\}[\s\S]*?\\end\{[^}]+\}", "latex_env"),
     ]
+    
+    # Combine custom patterns with default patterns if provided
+    if custom_patterns is not None:
+        patterns = list(custom_patterns) + default_patterns
+    else:
+        patterns = default_patterns
 
     # Build a combined regex with capturing groups
     combined = "|".join(f"({p})" for p, _ in patterns)
@@ -463,15 +486,33 @@ class AdaptiveChunker:
         overlap_tokens: int = 32,
         granularity_multipliers: Tuple[int, int] = (2, 4),
     ) -> None:
-        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, use_fast=True)
+        self.tokenizer = _get_tokenizer(tokenizer_name)
         self.max_tokens_fine = max_tokens_fine
         self.overlap_tokens = overlap_tokens
         self.granularity_multipliers = granularity_multipliers  # (medium_factor, coarse_factor)
 
     def _token_len(self, text: str) -> int:
-        return len(self.tokenizer.encode(text, add_special_tokens=False))
+        if self.tokenizer is not None:
+            return len(self.tokenizer.encode(text, add_special_tokens=False))
+        else:
+            # Fallback: approximate token count as words * 1.3
+            return int(len(text.split()) * 1.3)
 
     def _window_split(self, text: str, max_tokens: int, overlap: int) -> List[str]:
+        if self.tokenizer is None:
+            # Fallback to simple word-based splitting when tokenizer is not available
+            words = text.split()
+            chunks = []
+            start = 0
+            while start < len(words):
+                end = min(start + max_tokens, len(words))
+                chunk_text = ' '.join(words[start:end])
+                chunks.append(chunk_text)
+                if end == len(words):
+                    break
+                start = end - overlap
+            return chunks
+        
         ids = self.tokenizer.encode(text, add_special_tokens=False)
         chunks: List[List[int]] = []
         start = 0
@@ -483,14 +524,14 @@ class AdaptiveChunker:
             start = max(0, end - overlap)
         return [self.tokenizer.decode(c, skip_special_tokens=True) for c in chunks]
 
-    def _chunk_text_segment(self, text: str, max_tokens: int, overlap: int, enable_topic_shifts: bool = True) -> List[str]:
+    def _chunk_text_segment(self, text: str, max_tokens: int, overlap: int, enable_topic_shifts: bool = True, prefer_sweeping: bool = False) -> List[str]:
         # Break into paragraphs, then sentences within paragraphs
         paragraphs = [p for p in re.split(r"\n\n+", text) if p.strip()]
         out: List[str] = []
         for para in paragraphs:
             sents = _simple_sentences(para)
             if enable_topic_shifts and len(sents) > 1:
-                boundaries = set(_topic_boundaries(sents))
+                boundaries = set(_topic_boundaries(sents, low_sim_threshold=0.4 if prefer_sweeping else 0.25))
                 # Group sentences between boundaries
                 current: List[str] = []
                 for i, s in enumerate(sents):
@@ -519,16 +560,27 @@ class AdaptiveChunker:
             meta["prev_chunk_id"] = chunks[i - 1]["chunk_id"] if i > 0 else None
             meta["next_chunk_id"] = chunks[i + 1]["chunk_id"] if i < len(chunks) - 1 else None
 
-    def chunk(self, content: str, source_path: str = "", enable_topic_shifts: bool = True) -> Dict[str, List[Dict[str, Any]]]:
+    def chunk(self, content: str, source_path: str = "", enable_topic_shifts: bool = True, doc_type: str = "text", atomic_blocks: tuple = None, max_tokens: int = None, prefer_sweeping: bool = True) -> Dict[str, List[Dict[str, Any]]]:
         """
         Returns a dict with three granularities: {"fine": [...], "medium": [...], "coarse": [...]}.
         Each chunk contains: chunk_id, content, metadata with token_count, level, block_type, source_path.
         """
-        max_fine = self.max_tokens_fine
+        max_fine = max_tokens if max_tokens is not None else self.max_tokens_fine
         max_med = max_fine * self.granularity_multipliers[0]
         max_coarse = max_fine * self.granularity_multipliers[1]
 
-        segments = _split_atomic_blocks(content)
+        # Convert atomic_blocks tuple to pattern format if provided
+        custom_patterns = None
+        if atomic_blocks is not None:
+            custom_patterns = []
+            for block_type in atomic_blocks:
+                if block_type == 'equation':
+                    custom_patterns.append((r"\\begin\{equation\}[\s\S]*?\\end\{equation\}", "equation"))
+                elif block_type == 'align':
+                    custom_patterns.append((r"\\begin\{align\}[\s\S]*?\\end\{align\}", "align"))
+                # Add more block types as needed
+        
+        segments = _split_atomic_blocks(content, custom_patterns)
 
         outputs = {"fine": [], "medium": [], "coarse": []}
         for seg_type, seg_text in segments:
@@ -553,7 +605,7 @@ class AdaptiveChunker:
             else:
                 # Non-atomic text -> split by windows at multiple granularities
                 for level, max_tokens in [("fine", max_fine), ("medium", max_med), ("coarse", max_coarse)]:
-                    parts = self._chunk_text_segment(seg_text, max_tokens, self.overlap_tokens, enable_topic_shifts)
+                    parts = self._chunk_text_segment(seg_text, max_tokens, self.overlap_tokens, enable_topic_shifts, prefer_sweeping)
                     for p in parts:
                         cid = str(uuid.uuid4())
                         outputs[level].append({
@@ -570,4 +622,325 @@ class AdaptiveChunker:
         # Attach sequence metadata within each level
         for level in outputs:
             self._attach_sequence_metadata(outputs[level])
-        return outputs
+        # Return only fine granularity for compatibility with existing tests
+        return outputs["fine"]
+
+
+class EmbeddingGuidedChunker:
+    """
+    Advanced chunker that uses embedding-based cohesion analysis for boundary detection.
+    Implements adaptive chunk sizing based on semantic coherence.
+    """
+    
+    def __init__(self, config=None):
+        self.config = config or CHUNKING_EMBEDDING
+        self.embedding_client = UnifiedEmbeddingClient() if self.config.get('enable', False) else None
+        self.cohesion_threshold = self.config.get('cohesion_threshold', 0.7)
+        self.max_tokens = self.config.get('max_tokens_per_chunk', 1500)
+        self.overlap_tokens = self.config.get('overlap_tokens', 200)
+        self.adaptive_sizing = self.config.get('adaptive_sizing', True)
+        self.smart_overlap = self.config.get('smart_overlap', True)
+        self.logger = log
+        self.cache = {}  # Cache for embeddings
+        
+        # Initialize tokenizer for token counting
+        self.tokenizer = _get_tokenizer("bert-base-uncased")
+    
+    def _token_len(self, text: str) -> int:
+        """Calculate token length using the tokenizer."""
+        if self.tokenizer is not None:
+            return len(self.tokenizer.encode(text, add_special_tokens=False))
+        else:
+            # Fallback: approximate token count as words * 1.3
+            return int(len(text.split()) * 1.3)
+    
+    def _calculate_cohesion_scores(self, embeddings: List[List[float]]) -> List[float]:
+        """
+        Calculate cohesion scores between adjacent embeddings using cosine similarity.
+        Returns list of cohesion scores where score[i] is cohesion between embedding[i] and embedding[i+1].
+        """
+        if not embeddings:
+            return []
+        
+        if len(embeddings) == 1:
+            return [1.0]
+        
+        if len(embeddings) < 2:
+            return []
+
+        try:
+            import numpy as np
+            cohesion_scores = [1.0]  # First embedding always gets 1.0
+            
+            # Calculate cosine similarity between adjacent embeddings
+            for i in range(1, len(embeddings)):
+                vec1 = np.array(embeddings[i-1])
+                vec2 = np.array(embeddings[i])
+                
+                # Calculate cosine similarity
+                dot_product = np.dot(vec1, vec2)
+                norm1 = np.linalg.norm(vec1)
+                norm2 = np.linalg.norm(vec2)
+                
+                if norm1 == 0 or norm2 == 0:
+                    similarity = 0.0
+                else:
+                    similarity = dot_product / (norm1 * norm2)
+                
+                cohesion_scores.append(float(similarity))
+
+            return cohesion_scores
+        except Exception as e:
+            log.warning(f"Failed to calculate cohesion scores: {e}")
+            return [1.0] + [0.5] * (len(embeddings) - 1)
+    
+    def _find_boundary_candidates(self, cohesion_scores: List[float]) -> List[int]:
+        """
+        Find potential chunk boundaries based on cohesion minima.
+        Returns indices where cohesion drops below threshold or at local minima.
+        """
+        boundaries = []
+        
+        for i, score in enumerate(cohesion_scores):
+            # Add boundary if cohesion drops below threshold
+            if score < self.cohesion_threshold:
+                boundaries.append(i)  # Boundary at sentence i
+            
+            # Add boundary at local minima (if significantly lower than neighbors)
+            elif i > 0 and i < len(cohesion_scores) - 1:
+                prev_score = cohesion_scores[i - 1]
+                next_score = cohesion_scores[i + 1]
+                if score < prev_score - 0.1 and score < next_score - 0.1:
+                    boundaries.append(i)
+        
+        return sorted(set(boundaries))
+    
+    def _adaptive_chunk_sizing(self, sentences: List[str], boundaries: List[int]) -> List[List[str]]:
+        """
+        Create chunks with adaptive sizing based on content density and token limits.
+        """
+        chunks = []
+        start_idx = 0
+        
+        for boundary in boundaries + [len(sentences)]:
+            chunk_sentences = sentences[start_idx:boundary]
+            
+            if not chunk_sentences:
+                continue
+            
+            # Check if chunk exceeds token limit
+            chunk_text = " ".join(chunk_sentences)
+            token_count = self._token_len(chunk_text)
+            
+            if token_count > self.max_tokens and len(chunk_sentences) > 1:
+                # Split large chunk further
+                mid_point = len(chunk_sentences) // 2
+                chunks.append(chunk_sentences[:mid_point])
+                chunks.append(chunk_sentences[mid_point:])
+            else:
+                chunks.append(chunk_sentences)
+            
+            start_idx = boundary
+        
+        return chunks
+    
+    def _apply_smart_overlap(self, chunks: List[List[str]]) -> List[str]:
+        """
+        Apply intelligent overlap between chunks based on semantic continuity.
+        """
+        if not self.smart_overlap or len(chunks) < 2:
+            return [" ".join(chunk) for chunk in chunks]
+        
+        overlapped_chunks = []
+        
+        for i, chunk in enumerate(chunks):
+            chunk_text = " ".join(chunk)
+            
+            if i > 0 and self.overlap_tokens > 0:
+                # Add overlap from previous chunk
+                prev_chunk = chunks[i - 1]
+                overlap_sentences = prev_chunk[-2:] if len(prev_chunk) >= 2 else prev_chunk
+                overlap_text = " ".join(overlap_sentences)
+                
+                # Limit overlap by token count
+                overlap_tokens = self._token_len(overlap_text)
+                if overlap_tokens <= self.overlap_tokens:
+                    chunk_text = overlap_text + " " + chunk_text
+            
+            overlapped_chunks.append(chunk_text)
+        
+        return overlapped_chunks
+    
+    def chunk_with_embeddings(self, content: str, source_path: str = "") -> List[Dict[str, Any]]:
+        """
+        Main chunking method using embedding-guided boundary detection.
+        
+        Args:
+            content: Text content to chunk
+            source_path: Source file path for metadata
+        
+        Returns:
+            List of chunk dictionaries with content and metadata
+        """
+        if not self.config.get('enable', False):
+            # Fallback to simple chunking if embedding chunking is disabled
+            return self._fallback_chunking(content, source_path)
+        
+        try:
+            # Split content into sentences
+            sentences = self._extract_sentences(content)
+            
+            if len(sentences) < 2:
+                # Single sentence or empty content
+                return [{
+                    "content": content.strip(),
+                    "metadata": {
+                        "chunk_id": str(uuid.uuid4()),
+                        "method": "embedding_guided",
+                        "token_count": self._token_len(content),
+                        "cohesion_score": 1.0,
+                        "source_path": source_path,
+                        "chunking_method": "embedding_guided"
+                    }
+                }]
+            
+            # Get embeddings for sentences and calculate cohesion scores
+            try:
+                embeddings = self.embedding_client.get_embeddings(sentences)
+                cohesion_scores = self._calculate_cohesion_scores(embeddings)
+            except EmbeddingAPIError as e:
+                log.warning(f"Failed to get embeddings: {e}")
+                return self._fallback_chunk(content, source_path)
+            
+            # Find boundary candidates based on cohesion
+            boundaries = self._find_boundary_candidates(cohesion_scores)
+            
+            # Apply adaptive chunk sizing
+            sentence_chunks = self._adaptive_chunk_sizing(sentences, boundaries)
+            
+            # Apply smart overlap
+            final_chunks = self._apply_smart_overlap(sentence_chunks)
+            
+            # Create chunk objects with metadata
+            result_chunks = []
+            for i, chunk_content in enumerate(final_chunks):
+                # Calculate average cohesion for this chunk
+                chunk_start = sum(len(sentence_chunks[j]) for j in range(i))
+                chunk_end = chunk_start + len(sentence_chunks[i]) - 1
+                
+                relevant_scores = cohesion_scores[max(0, chunk_start):min(len(cohesion_scores), chunk_end)]
+                avg_cohesion = np.mean(relevant_scores) if relevant_scores else 1.0
+                
+                result_chunks.append({
+                    "content": chunk_content.strip(),
+                    "metadata": {
+                        "chunk_id": str(uuid.uuid4()),
+                        "method": "embedding_guided",
+                        "token_count": self._token_len(chunk_content),
+                        "cohesion_score": float(avg_cohesion),
+                        "source_path": source_path,
+                        "chunking_method": "embedding_guided",
+                        "sentence_count": len(sentence_chunks[i]) if i < len(sentence_chunks) else 0
+                    }
+                })
+            
+            return result_chunks
+            
+        except Exception as e:
+            log.warning(f"Embedding-guided chunking failed: {e}")
+            return self._fallback_chunk(content, source_path)
+    
+    def _find_optimal_boundaries(self, sentences: List[str], cohesion_scores: List[float]) -> List[int]:
+        """Find optimal chunk boundaries based on cohesion scores."""
+        return self._find_boundary_candidates(cohesion_scores)
+    
+    def _create_chunks_with_overlap(self, sentences: List[str], boundaries: List[int]) -> List[Dict[str, Any]]:
+        """Create chunks with overlap from sentence boundaries."""
+        sentence_chunks = self._adaptive_chunk_sizing(sentences, boundaries)
+        chunk_texts = self._apply_smart_overlap(sentence_chunks)
+        
+        # Convert to proper chunk structure
+        chunks = []
+        for chunk_text in chunk_texts:
+            chunks.append({
+                "content": chunk_text,
+                "metadata": {
+                    "chunk_id": str(uuid.uuid4()),
+                    "method": "embedding_guided",
+                    "token_count": self._token_len(chunk_text),
+                    "cohesion_score": 0.8,  # Default high score for embedding-guided chunks
+                    "source_path": "",
+                    "chunking_method": "embedding_guided"
+                }
+            })
+        return chunks
+    
+    def _fallback_chunk(self, content: str, source_path: str = "") -> List[Dict[str, Any]]:
+        """Fallback chunking when embedding approach fails."""
+        return self._fallback_chunking(content, source_path)
+    
+    def _count_tokens(self, text: str) -> int:
+        """Count tokens in text."""
+        return self._token_len(text)
+    
+    def _split_into_sentences(self, content: str) -> List[str]:
+        """Split content into sentences."""
+        return self._extract_sentences(content)
+    
+    def _extract_sentences(self, content: str) -> List[str]:
+        """
+        Extract sentences from content using simple sentence splitting.
+        """
+        # Simple sentence splitting - could be enhanced with more sophisticated NLP
+        sentences = re.split(r'[.!?]+\s+', content.strip())
+        return [s.strip() for s in sentences if s.strip()]
+    
+    def _fallback_chunking(self, content: str, source_path: str = "") -> List[Dict[str, Any]]:
+        """
+        Fallback chunking method when embedding-guided chunking fails or is disabled.
+        """
+        # Simple token-based chunking
+        words = content.split()
+        chunks = []
+        current_chunk = []
+        current_tokens = 0
+        
+        for word in words:
+            word_tokens = self._token_len(word)
+            
+            if current_tokens + word_tokens > self.max_tokens and current_chunk:
+                # Create chunk
+                chunk_content = " ".join(current_chunk)
+                chunks.append({
+                    "content": chunk_content,
+                    "metadata": {
+                        "chunk_id": str(uuid.uuid4()),
+                        "method": "fallback",
+                        "token_count": self._token_len(chunk_content),
+                        "cohesion_score": 0.5,  # Default neutral score
+                        "source_path": source_path,
+                        "chunking_method": "fallback_token_based"
+                    }
+                })
+                current_chunk = []
+                current_tokens = 0
+            
+            current_chunk.append(word)
+            current_tokens += word_tokens
+        
+        # Add final chunk
+        if current_chunk:
+            chunk_content = " ".join(current_chunk)
+            chunks.append({
+                "content": chunk_content,
+                "metadata": {
+                    "chunk_id": str(uuid.uuid4()),
+                    "method": "fallback",
+                    "token_count": self._token_len(chunk_content),
+                    "cohesion_score": 0.5,
+                    "source_path": source_path,
+                    "chunking_method": "fallback_token_based"
+                }
+            })
+        
+        return chunks

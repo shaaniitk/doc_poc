@@ -73,6 +73,36 @@ LLM_CHUNK_CONFIG = {
     "ENABLE_LLM_ENHANCEMENT": True
 }
 
+# --- NEW: Embedding-guided cohesion (Phase 1, OFF by default) ---
+EMBEDDING_COHESION_CONFIG = {
+    "ENABLE": False,                  # When True, chunker can compute per-chunk cohesion_score using embeddings
+    "method": "intra_sentence_avg",  # Future-proof: how cohesion is computed
+    "min_sentences": 2               # Only compute if chunk has at least this many sentences
+}
+
+# --- NEW: Embedding-guided chunking configuration ---
+CHUNKING_EMBEDDING = {
+    "enable": True,
+    "cohesion_threshold": 0.7,
+    "max_tokens_per_chunk": 1500,
+    "overlap_tokens": 200,
+    "fallback_provider": "sentence_transformer",
+    "boundary_detection_method": "cohesion_minima",
+    "adaptive_sizing": True,
+    "smart_overlap": True
+}
+
+# --- NEW: Mistral refinement configuration ---
+MISTRAL_REFINEMENT = {
+    "enable": True,
+    "only_for_low_confidence": True,
+    "confidence_threshold": 0.6,
+    "max_cases_per_doc": 10,
+    "refinement_model": "mistral-small-latest",
+    "temperature": 0.1,
+    "max_tokens": 1024
+}
+
 # Alternative LLM providers
 LLM_PROVIDERS = {
     "mistral": {
@@ -667,4 +697,30 @@ QUANT_FINANCE_GLOSSARY = {
         "HFT": "High-Frequency Trading",
         "APT": "Arbitrage Pricing Theory"
     }
+}
+
+# --- NEW: Knowledge Graph (KG) unified view configuration (Phase 2) ---
+KG_CONFIG = {
+    "ENABLE_KG_UNIFIED": True,        # Build unified KG when requested
+    "SEMANTIC_TOP_K": 5,              # Top-K semantic neighbors per node
+    "SEMANTIC_THRESHOLD": 0.80,       # Threshold for semantic edges
+    "DUPLICATE_THRESHOLD": 0.95,      # Stricter threshold for duplicate edges
+    "DUMP_ON_ANALYSIS": True,         # When running run_analysis, also dump the KG to disk
+    "DUMP_FORMAT": "json",           # Options: "json" (node-link) or "graphml"
+    "DUMP_FILENAME": "knowledge_graph_unified.json",  # File name for dump within the session folder
+    
+    # KG-Enhanced Section Mapping
+    "enhance_section_mapping": True,
+    "kg_weight": 0.4,  # Weight for KG scores (0.0-1.0)
+    "embedding_weight": 0.6,  # Weight for embedding similarity (should sum to 1.0 with kg_weight)
+    
+    # KG Score Components (weights for composite score)
+    "centrality_weight": 0.3,
+    "cohesion_weight": 0.2, 
+    "semantic_connectivity_weight": 0.3,
+    "structural_importance_weight": 0.2,
+    
+    # Section Affinity Parameters
+    "use_section_affinity": True,
+    "affinity_boost_factor": 1.2  # Multiplier for KG-based section affinity
 }

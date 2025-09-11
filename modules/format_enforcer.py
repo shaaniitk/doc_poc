@@ -66,11 +66,11 @@ class FormatEnforcer:
         """
         Runs the full format enforcement process: automatic fixes followed by validation.
         """
-        fixed_content = self._post_process_output(content)
-        issues = self._validate_output(fixed_content)
+        fixed_content = self.post_process_output(content)
+        issues = self.validate_output(fixed_content)
         return fixed_content, issues
 
-    def _validate_output(self, content):
+    def validate_output(self, content):
         """Validates content against format-specific rules."""
         issues = []
         patterns = self.format_rules[self.output_format].get("validation_patterns", [])
@@ -79,7 +79,7 @@ class FormatEnforcer:
                 issues.append(message)
         return issues
     
-    def _post_process_output(self, content):
+    def post_process_output(self, content):
         """Automatically fixes common formatting issues, now with flag support."""
         # The rules are now tuples of (pattern, replacement, flags)
         # where flags can be 0 if not needed.

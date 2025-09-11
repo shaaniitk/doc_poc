@@ -206,7 +206,7 @@ def main(source, source2=None, combine_strategy="smart", output_format="latex",
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="State-of-the-Art Document Refactoring and Augmentation Engine.")
+    parser = argparse.ArgumentParser(description="Document Refactoring and Augmentation Engine.")
     parser.add_argument("--source", required=True, help="Path to the primary source .tex file.")
     parser.add_argument("--source2", help="Path to the second .tex file for augmentation.")
     parser.add_argument("--combine", dest="combine_strategy", default="smart", choices=["smart", "robust"], help="Strategy for combining two documents.")

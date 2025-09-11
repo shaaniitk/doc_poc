@@ -1,14 +1,21 @@
 import os
 import openai
 import numpy as np
-from typing import List, Union
+import logging
+import time
+from typing import List, Union, Dict, Any, Optional, Tuple
 from sentence_transformers import SentenceTransformer
-from config import SEMANTIC_MAPPING_CONFIG
-from .error_handler import ProcessingError
+import cohere
+from config import SEMANTIC_MAPPING_CONFIG, LLM_CONFIG
+from .error_handler import (
+    ProcessingError, EmbeddingError,
+    EmbeddingAPIError, EmbeddingModelError, EmbeddingFallbackError,
+    robust_embedding_call, EmbeddingRateLimiter, EmbeddingFallbackManager
+)
 
 class UnifiedEmbeddingClient:
     """
-    A unified client for handling different embedding providers.
+    A unified client for handling different embedding providers with fallback support and robust error handling.
     Supports both SentenceTransformer models and OpenAI embeddings.
     """
     
@@ -17,6 +24,12 @@ class UnifiedEmbeddingClient:
         self.provider = self.config.get('provider', 'sentence_transformer')
         self.model_name = self.config['model']
         self.model = None
+        self.logger = logging.getLogger(__name__)
+        
+        # Initialize error handling components
+        self.rate_limiter = EmbeddingRateLimiter()
+        self.fallback_manager = EmbeddingFallbackManager()
+        
         self._load_model()
     
     def _load_model(self):
@@ -135,3 +148,140 @@ class LangChainEmbeddingWrapper:
     def __call__(self, text: str) -> List[float]:
         """Make the wrapper callable - delegates to embed_query."""
         return self.embed_query(text)
+
+    @robust_embedding_call(max_retries=3, backoff_delay=2.0)
+    def get_embeddings(self, texts: List[str]) -> List[List[float]]:
+        """
+        Get embeddings for a list of texts with robust error handling.
+        
+        Args:
+            texts: List of text strings to embed
+            
+        Returns:
+            List of embedding vectors
+        """
+        if not texts:
+            return []
+            
+        try:
+            # Apply rate limiting
+            self.rate_limiter.wait_if_needed()
+            
+            embeddings = self.embedding_client.encode(texts)
+            return embeddings.tolist()
+        except Exception as e:
+            self.logger.error(f"Error getting embeddings: {e}")
+            # Try fallback if available
+            fallback_result = self.fallback_manager.try_fallback('get_embeddings', texts=texts)
+            if fallback_result is not None:
+                return fallback_result
+            raise EmbeddingAPIError(f"Failed to get embeddings: {e}")
+    
+    @robust_embedding_call(max_retries=2, backoff_delay=1.5)
+    def get_embeddings_batch(self, texts: List[str], batch_size: int = 32) -> List[List[float]]:
+        """
+        Get embeddings for texts in batches with robust error handling.
+        
+        Args:
+            texts: List of text strings to embed
+            batch_size: Size of each batch for processing
+            
+        Returns:
+            List of embedding vectors
+        """
+        if not texts:
+            return []
+            
+        all_embeddings = []
+        
+        try:
+            for i in range(0, len(texts), batch_size):
+                batch = texts[i:i + batch_size]
+                self.rate_limiter.wait_if_needed()
+                
+                batch_embeddings = self.get_embeddings(batch)
+                all_embeddings.extend(batch_embeddings)
+                
+            return all_embeddings
+            
+        except Exception as e:
+            self.logger.error(f"Error in batch embedding processing: {e}")
+            fallback_result = self.fallback_manager.try_fallback('get_embeddings_batch', texts=texts, batch_size=batch_size)
+            if fallback_result is not None:
+                return fallback_result
+            raise EmbeddingAPIError(f"Failed to process embeddings in batches: {e}")
+    
+    def calculate_cohesion_scores(self, embeddings: List[List[float]], window_size: int = 3) -> List[float]:
+        """
+        Calculate cohesion scores between consecutive embeddings.
+        
+        Args:
+            embeddings: List of embedding vectors
+            window_size: Size of the sliding window for cohesion calculation
+            
+        Returns:
+            List of cohesion scores
+        """
+        if len(embeddings) < 2:
+            return [1.0] * len(embeddings)
+            
+        try:
+            embeddings_array = np.array(embeddings)
+            cohesion_scores = []
+            
+            for i in range(len(embeddings)):
+                if i == 0:
+                    cohesion_scores.append(1.0)
+                    continue
+                    
+                # Calculate similarity with previous embeddings in window
+                start_idx = max(0, i - window_size)
+                window_embeddings = embeddings_array[start_idx:i]
+                current_embedding = embeddings_array[i]
+                
+                # Calculate cosine similarities
+                similarities = []
+                for prev_embedding in window_embeddings:
+                    similarity = np.dot(current_embedding, prev_embedding) / (
+                        np.linalg.norm(current_embedding) * np.linalg.norm(prev_embedding)
+                    )
+                    similarities.append(similarity)
+                
+                # Average similarity as cohesion score
+                cohesion_score = np.mean(similarities) if similarities else 0.0
+                cohesion_scores.append(max(0.0, cohesion_score))
+                
+            return cohesion_scores
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating cohesion scores: {e}")
+            # Return default scores on error
+            return [0.5] * len(embeddings)
+    
+    def detect_topic_boundaries(self, embeddings: List[List[float]], threshold: float = 0.3) -> List[int]:
+        """
+        Detect topic boundaries based on embedding similarity drops.
+        
+        Args:
+            embeddings: List of embedding vectors
+            threshold: Similarity threshold for boundary detection
+            
+        Returns:
+            List of indices where topic boundaries are detected
+        """
+        if len(embeddings) < 2:
+            return []
+            
+        try:
+            cohesion_scores = self.calculate_cohesion_scores(embeddings)
+            boundaries = []
+            
+            for i, score in enumerate(cohesion_scores[1:], 1):
+                if score < threshold:
+                    boundaries.append(i)
+                    
+            return boundaries
+            
+        except Exception as e:
+            self.logger.error(f"Error detecting topic boundaries: {e}")
+            return []

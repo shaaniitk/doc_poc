@@ -38,6 +38,7 @@ iniconfig==2.1.0
 # Data Processing
 pandas  # Add if needed
 openpyxl  # Add if needed for Excel support
+networkx>=3.0  # For knowledge graph processing
 
 # Optional: LaTeX Processing
 pdflatex==0.1.3

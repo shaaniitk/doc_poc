@@ -1,0 +1,34 @@
+{% macro render_nodes(node_level) %}
+{
+{% for title, data in node_level.items() %}
+  "{{ title }}": {
+    {% if data is mapping %}
+    "content": {{ data.get('processed_content', '') | tojson }},
+    {% if data.get('subsections') %}
+    "subsections": {{ render_nodes(data.subsections) }}
+    {% else %}
+    "subsections": {}
+    {% endif %}
+    {% else %}
+    "content": {{ data | tojson }},
+    "subsections": {}
+    {% endif %}
+  }{% if not loop.last %},{% endif %}
+{% endfor %}
+}
+{% endmacro %}
+
+{
+  "document": {{ render_nodes(processed_tree) }},
+  {% if orphaned_content %}
+  "orphaned_content": [
+    {% for chunk in orphaned_content %}
+    {
+      "content": {{ chunk.content | tojson }}
+    }{% if not loop.last %},{% endif %}
+    {% endfor %}
+  ]
+  {% else %}
+  "orphaned_content": []
+  {% endif %}
+}

@@ -65,8 +65,8 @@ def test_global_assignment_capacity_replication(monkeypatch):
     model = DummyEmbeddingModel()
 
     # Create a simple KG processor stub that holds embeddings and a structural graph
-    kg = KnowledgeGraphProcessor(chunks=[], embedding_model=model)
-    kg.embeddings = model.encode([c['content'] for c in chunks])
+    kg = KnowledgeGraphProcessor(all_chunks=[], embedding_model=model)
+    kg._embeddings = model.encode([c['content'] for c in chunks])
     kg.structural_graph = None
 
     # Create mapper with template object and injected kg processor
@@ -81,7 +81,7 @@ def test_global_assignment_capacity_replication(monkeypatch):
     mapper.config['similarity_threshold'] = 0.1
     mapper.config['global_capacity_alpha'] = 1.0
 
-    mapped = mapper.map_chunks(chunks)
+    mapped, unmapped_chunks = mapper.map_chunks(chunks)
 
     # Validate that alpha-heavy chunks go to Alpha Section and beta-heavy to Beta Section
     def find_section_chunks(mapped_tree, section_title):
@@ -122,8 +122,8 @@ def test_global_assignment_with_capacity_constraints(monkeypatch):
         })
 
     model = DummyEmbeddingModel()
-    kg = KnowledgeGraphProcessor(chunks=[], embedding_model=model)
-    kg.embeddings = model.encode([c['content'] for c in chunks])
+    kg = KnowledgeGraphProcessor(all_chunks=[], embedding_model=model)
+    kg._embeddings = model.encode([c['content'] for c in chunks])
     kg.structural_graph = None
 
     mapper = IntelligentMapper(template_name="test_template", template_object=make_template(), kg_processor=kg)
@@ -135,14 +135,12 @@ def test_global_assignment_with_capacity_constraints(monkeypatch):
     mapper.config['similarity_threshold'] = 0.1
     mapper.config['global_capacity_alpha'] = 2.0  # Capacity for alpha sections
 
-    mapped = mapper.map_chunks(chunks)
+    mapped, unmapped_chunks = mapper.map_chunks(chunks)
 
     def find_section_chunks(mapped_tree, section_title):
         node = mapped_tree
         for p in section_title.split('/'):
             node = node.get(p, {})
-            if 'subsections' in node:
-                node = node['subsections']
         return node.get('chunks', [])
 
     alpha_chunks = find_section_chunks(mapped, 'Alpha Section')
