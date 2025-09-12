@@ -6,7 +6,7 @@ import time
 from typing import List, Union, Dict, Any, Optional, Tuple
 from sentence_transformers import SentenceTransformer
 import cohere
-from config import SEMANTIC_MAPPING_CONFIG, LLM_CONFIG
+import config
 from .error_handler import (
     ProcessingError, EmbeddingError,
     EmbeddingAPIError, EmbeddingModelError, EmbeddingFallbackError,
@@ -19,8 +19,9 @@ class UnifiedEmbeddingClient:
     Supports both SentenceTransformer models and OpenAI embeddings.
     """
     
-    def __init__(self, config=None):
-        self.config = config or SEMANTIC_MAPPING_CONFIG
+    def __init__(self, custom_config=None):
+        embedding_config = getattr(config, 'EMBEDDING_CONFIG', {})
+        self.config = custom_config or embedding_config
         self.provider = self.config.get('provider', 'sentence_transformer')
         self.model_name = self.config['model']
         self.model = None

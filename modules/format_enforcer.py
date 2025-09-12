@@ -6,7 +6,7 @@ strict format requirements (e.g., valid LaTeX). It loads its instructional syste
 prompts from the central config file, separating configuration from logic.
 """
 import re
-from config import FORMAT_ENFORCER_PROMPTS
+import config
 
 class FormatEnforcer:
     """
@@ -54,7 +54,8 @@ class FormatEnforcer:
 
         # Dynamically inject the system prompts from the config file.
         # This makes the class much cleaner and more maintainable.
-        for format_name, prompt in FORMAT_ENFORCER_PROMPTS.items():
+        format_enforcer_prompts = getattr(config, 'FORMAT_ENFORCER_PROMPTS', {})
+        for format_name, prompt in format_enforcer_prompts.items():
             if format_name in self.format_rules:
                 self.format_rules[format_name]['system_prompt'] = prompt
     

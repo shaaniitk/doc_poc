@@ -3,7 +3,7 @@
 import logging
 import copy
 from .llm_client import UnifiedLLMClient
-from config import PROMPTS
+import config
 
 log = logging.getLogger(__name__)
 
@@ -53,7 +53,8 @@ class TemplateEnhancer:
 
     def _llm_generate_description(self, section_title: str, excerpt: str) -> str:
         """Calls the LLM to generate the new description."""
-        prompt = PROMPTS['generate_dynamic_description'].format(
+        prompts = getattr(config, 'PROMPTS', {})
+        prompt = prompts.get('generate_dynamic_description', 'Generate a description for section: {section_title}').format(
             section_title=section_title,
             full_text_excerpt=excerpt
         )

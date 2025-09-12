@@ -1,12 +1,4 @@
 """Configuration file for document processing"""
-# Configuration file for document analysis system
-# This file contains all configuration parameters for the document processing pipeline
-#
-# SWITCHING BETWEEN LOCAL AND API MODELS:
-# - By default, this configuration uses local models that run offline
-# - To use API-based models (OpenAI, Mistral, Cohere, etc.), uncomment the desired
-#   API configuration sections and comment out the corresponding local configurations
-# - Make sure to set the required API keys as environment variables
 
 # --- NEW: Configuration for LangChain-based Chunkers ---
 LANGCHAIN_CHUNK_CONFIG = {
@@ -17,48 +9,16 @@ LANGCHAIN_CHUNK_CONFIG = {
 
 
 # LLM Configuration
-# LLM Configuration - Choose between local or API-based models
 LLM_CONFIG = {
     "provider": "huggingface_local",  # Local Hugging Face models
-    "model": "Qwen/Qwen2.5-3B-Instruct",  # Qwen 2.5-3B with 32K context window for GPU systems
+    "model": "microsoft/DialoGPT-large",
     "api_key_env": None,  # No API key needed for local models
-    "max_tokens": 4096,  # Much larger context window for better document processing
+    "max_tokens": 2048,
     "temperature": 0.1,
     "timeout": 30,
-    "device": "auto",  # Will use GPU automatically
-    "local_model_path": "./models/llm"  # Use cached models from download script
+    "device": "auto",
+    "local_model_path": None  # Will download automatically if not cached
 }
-
-# Alternative API-based configurations (uncomment to use):
-# OpenAI Configuration
-# LLM_CONFIG = {
-#     "provider": "openai",
-#     "model": "gpt-4",  # or "gpt-3.5-turbo", "gpt-4-turbo"
-#     "api_key_env": "OPENAI_API_KEY",
-#     "max_tokens": 2048,
-#     "temperature": 0.1,
-#     "timeout": 30
-# }
-
-# Mistral AI Configuration
-# LLM_CONFIG = {
-#     "provider": "mistral",
-#     "model": "mistral-large-latest",  # or "mistral-small-latest", "mistral-medium-latest"
-#     "api_key_env": "MISTRAL_API_KEY",
-#     "max_tokens": 2048,
-#     "temperature": 0.1,
-#     "timeout": 30
-# }
-
-# Hugging Face API Configuration
-# LLM_CONFIG = {
-#     "provider": "huggingface",
-#     "model": "mistralai/Mistral-7B-Instruct-v0.1",
-#     "api_key_env": "HUGGINGFACE_API_KEY",
-#     "max_tokens": 2048,
-#     "temperature": 0.1,
-#     "timeout": 30
-# }
 
 # Embedding Model Configuration - Toggle between models by commenting/uncommenting
 # Option 1: OpenAI Embedding Model (requires OPENAI_API_KEY)
@@ -122,43 +82,6 @@ EMBEDDING_COHESION_CONFIG = {
     "min_sentences": 2               # Only compute if chunk has at least this many sentences
 }
 
-# --- NEW: Unified Embedding Configuration ---
-# Current: Local Sentence Transformer Model (default)
-EMBEDDING_CONFIG = {
-    "provider": "sentence_transformer",
-    "model": "sentence-transformers/all-mpnet-base-v2",
-    "device": "auto",
-    "batch_size": 32
-}
-
-# Alternative API-based embedding configurations (uncomment to use):
-# OpenAI Embedding Configuration
-# EMBEDDING_CONFIG = {
-#     "provider": "openai",
-#     "model": "text-embedding-3-large",  # or "text-embedding-ada-002", "text-embedding-3-small"
-#     "api_key_env": "OPENAI_API_KEY",
-#     "device": "auto",
-#     "batch_size": 32
-# }
-
-# Cohere Embedding Configuration
-# EMBEDDING_CONFIG = {
-#     "provider": "cohere",
-#     "model": "embed-english-v3.0",  # or "embed-multilingual-v3.0"
-#     "api_key_env": "COHERE_API_KEY",
-#     "device": "auto",
-#     "batch_size": 32
-# }
-
-# Hugging Face API Embedding Configuration
-# EMBEDDING_CONFIG = {
-#     "provider": "huggingface",
-#     "model": "sentence-transformers/all-mpnet-base-v2",
-#     "api_key_env": "HUGGINGFACE_API_KEY",
-#     "device": "auto",
-#     "batch_size": 32
-# }
-
 # --- NEW: Embedding-guided chunking configuration ---
 CHUNKING_EMBEDDING = {
     "enable": True,
@@ -184,9 +107,6 @@ LOCAL_LLM_REFINEMENT = {
     "max_tokens": 1024,
     "device": "auto"
 }
-
-# --- Alias for test compatibility ---
-MISTRAL_REFINEMENT = LOCAL_LLM_REFINEMENT
 
 # Alternative LLM providers
 LLM_PROVIDERS = {

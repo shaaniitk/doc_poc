@@ -1,0 +1,50 @@
+{
+  "profile": "balanced",
+  "timestamp": "C:\\workspace\\doc_poc",
+  "total_duration": 18.44722032546997,
+  "python_version": "3.12.10",
+  "tests": [
+    {
+      "test": "Package Imports",
+      "status": "passed",
+      "details": "All 8 packages imported",
+      "duration_seconds": 4.231600761413574
+    },
+    {
+      "test": "PyTorch Setup",
+      "status": "passed",
+      "details": "Version: 2.8.0+cpu, GPU: False",
+      "duration_seconds": 0.0005390644073486328
+    },
+    {
+      "test": "Configuration Files",
+      "status": "passed",
+      "details": "Missing: 0",
+      "duration_seconds": 0.0
+    },
+    {
+      "test": "Model Loading",
+      "status": "passed",
+      "details": "Model: sentence-transformers/all-MiniLM-L6-v2, Dim: 384",
+      "duration_seconds": 5.19204044342041
+    },
+    {
+      "test": "Cached Models",
+      "status": "passed",
+      "details": "Embedding: 3, LLM: 3",
+      "duration_seconds": 0.0005078315734863281
+    },
+    {
+      "test": "Embedding Performance",
+      "status": "passed",
+      "details": "Speed: 166.86 sent/sec",
+      "duration_seconds": 4.385438442230225
+    },
+    {
+      "test": "Memory Usage",
+      "status": "passed",
+      "details": "Peak: 544.6 MB",
+      "duration_seconds": 4.634902000427246
+    }
+  ]
+}

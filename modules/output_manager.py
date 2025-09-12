@@ -7,7 +7,7 @@ final, processed document tree into a valid, well-formatted output file.
 """
 import os
 from datetime import datetime
-from config import OUTPUT_FORMATS, SEMANTIC_MAPPING_CONFIG
+import config
 import json 
 import re
 from typing import Dict, Any, List, Tuple
@@ -92,9 +92,10 @@ class OutputManager:
         Compute orphan stats, low-confidence metrics, and candidate distributions
         from a mapped tree prior to LLM processing. Safe against missing fields.
         """
-        threshold = SEMANTIC_MAPPING_CONFIG.get('similarity_threshold', 0.6)
-        margin = SEMANTIC_MAPPING_CONFIG.get('low_confidence_margin', SEMANTIC_MAPPING_CONFIG.get('soft_accept_margin', 0.05))
-        gap_margin = SEMANTIC_MAPPING_CONFIG.get('gap_accept_margin', 0.1)
+        semantic_config = getattr(config, 'SEMANTIC_MAPPING_CONFIG', {})
+        threshold = semantic_config.get('similarity_threshold', 0.6)
+        margin = semantic_config.get('low_confidence_margin', semantic_config.get('soft_accept_margin', 0.05))
+        gap_margin = semantic_config.get('gap_accept_margin', 0.1)
 
         mapped_chunks, orphan_chunks = self._iter_chunks(mapped_tree)
         all_chunks = mapped_chunks + orphan_chunks

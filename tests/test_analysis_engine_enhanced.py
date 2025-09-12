@@ -3,7 +3,7 @@ import numpy as np
 from unittest.mock import Mock, patch, MagicMock
 from modules.analysis_engine import DocumentAnalyzer
 from modules.error_handler import EmbeddingError, EmbeddingAPIError
-from config import MISTRAL_REFINEMENT
+import config
 
 
 class TestDocumentAnalyzerEnhanced:
@@ -81,7 +81,8 @@ class TestDocumentAnalyzerEnhanced:
     
     def test_initialization_with_semantic_features(self, analyzer):
         """Test analyzer initialization with semantic components."""
-        assert analyzer.mistral_config == MISTRAL_REFINEMENT
+        mistral_refinement = getattr(config, 'MISTRAL_REFINEMENT', {})
+        assert analyzer.mistral_config == mistral_refinement
         assert analyzer.embedding_client is not None
         assert analyzer.semantic_cache == {}
         assert analyzer.document_trees is not None

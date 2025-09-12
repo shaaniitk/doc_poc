@@ -3,7 +3,7 @@ import os
 import requests
 import logging
 from dotenv import load_dotenv
-from config import LLM_CONFIG, LLM_PROVIDERS
+import config
 from .error_handler import LLMError, ResponseValidator, CircuitBreaker
 from langchain.llms.base import LLM # <-- LANGCHAIN IMPORT
 from typing import Any, List, Mapping, Optional # <-- LANGCHAIN IMPORT
@@ -21,8 +21,10 @@ load_dotenv()
 
 class UnifiedLLMClient:
     def __init__(self, provider=None):
-        self.provider = provider or LLM_CONFIG["provider"]
-        self.config = LLM_PROVIDERS.get(self.provider, {})
+        llm_config = getattr(config, 'LLM_CONFIG', {})
+        llm_providers = getattr(config, 'LLM_PROVIDERS', {})
+        self.provider = provider or llm_config.get("provider", "gemini")
+        self.config = llm_providers.get(self.provider, {})
         self.circuit_breaker = CircuitBreaker()
         self.logger = logging.getLogger(self.__class__.__name__)
 
@@ -30,12 +32,18 @@ class UnifiedLLMClient:
         if not self.circuit_breaker.allow_request():
             raise LLMError("Circuit breaker is OPEN; skipping LLM call")
 
-        model = model or LLM_CONFIG["model"]
-        max_tokens = max_tokens or LLM_CONFIG["max_tokens"]
-        temperature = temperature or LLM_CONFIG["temperature"]
+        llm_config = getattr(config, 'LLM_CONFIG', {})
+        model = model or llm_config.get("model", "gemini-1.5-flash")
+        max_tokens = max_tokens or llm_config.get("max_tokens", 4000)
+        temperature = temperature or llm_config.get("temperature", 0.7)
         
         try:
-            provider_method_map = {"gemini": self._call_gemini, "openai": self._call_openai, "mistral": self._call_mistral}
+            provider_method_map = {
+                "gemini": self._call_gemini, 
+                "openai": self._call_openai, 
+                "mistral": self._call_mistral,
+                "huggingface_local": self._call_huggingface_local
+            }
             provider_method = provider_method_map.get(self.provider)
             
             if not provider_method:
@@ -96,7 +104,7 @@ class UnifiedLLMClient:
         response = requests.post(
             self.config["url"], headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             json={"model": model_name, "messages": messages, "max_tokens": max_tokens, "temperature": temperature, "stream": stream},
-            timeout=LLM_CONFIG["timeout"]
+            timeout=getattr(config, 'LLM_CONFIG', {}).get("timeout", 30)
         )
         if response.status_code == 200:
             if stream: raise NotImplementedError("Streaming is not yet implemented for the OpenAI client.")
@@ -110,13 +118,66 @@ class UnifiedLLMClient:
         response = requests.post(
             self.config["url"], headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             json={"model": model_name, "messages": messages, "max_tokens": max_tokens, "temperature": temperature, "stream": stream},
-            timeout=LLM_CONFIG["timeout"]
+            timeout=getattr(config, 'LLM_CONFIG', {}).get("timeout", 30)
         )
         if response.status_code == 200:
             if stream: raise NotImplementedError("Streaming is not yet implemented for the Mistral client.")
             return response.json()["choices"][0]["message"]["content"]
         else:
             raise LLMError(f"Mistral API Error: {response.status_code} - {response.text}")
+    
+    def _call_huggingface_local(self, messages, model_name, max_tokens, temperature, stream):
+        """Handle local Hugging Face model calls using transformers library"""
+        try:
+            from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+            import torch
+        except ImportError:
+            raise LLMError("transformers library not installed. Install with: pip install transformers torch")
+        
+        try:
+            # Get device configuration
+            llm_config = getattr(config, 'LLM_CONFIG', {})
+            device_config = llm_config.get('device', 'auto')
+            
+            # Determine device
+            if device_config == 'auto':
+                device = 0 if torch.cuda.is_available() else -1
+            elif device_config == 'cpu':
+                device = -1
+            else:
+                device = device_config
+            
+            # Convert messages to a single prompt string
+            prompt = "\n".join([f"{msg['role']}: {msg['content']}" for msg in messages])
+            prompt += "\nassistant:"
+            
+            # Create text generation pipeline
+            generator = pipeline(
+                "text-generation",
+                model=model_name,
+                tokenizer=model_name,
+                device=device,
+                torch_dtype=torch.float16 if device >= 0 else torch.float32,
+                trust_remote_code=True
+            )
+            
+            # Generate response
+            result = generator(
+                prompt,
+                max_new_tokens=max_tokens,
+                temperature=temperature,
+                do_sample=True,
+                pad_token_id=generator.tokenizer.eos_token_id
+            )
+            
+            # Extract generated text (remove the input prompt)
+            generated_text = result[0]['generated_text']
+            response = generated_text[len(prompt):].strip()
+            
+            return response
+            
+        except Exception as e:
+            raise LLMError(f"Local Hugging Face model call failed: {str(e)}")
 
 
 class LangChainLLM(LLM):
@@ -145,4 +206,5 @@ class LangChainLLM(LLM):
         """
         Returns a dictionary of identifying parameters for logging and caching.
         """
-        return {"provider": self.client.provider, "model": LLM_CONFIG["model"]}
+        llm_config = getattr(config, 'LLM_CONFIG', {})
+        return {"provider": self.client.provider, "model": llm_config.get("model", "gemini-1.5-flash")}

@@ -11,7 +11,7 @@ Enhanced with semantic preservation metrics and topic drift detection.
 import logging
 import numpy as np
 from typing import Dict, List, Any, Optional, Tuple
-from config import MISTRAL_REFINEMENT
+import config
 from .embedding_client import UnifiedEmbeddingClient
 
 log = logging.getLogger(__name__)
@@ -33,10 +33,10 @@ class DocumentAnalyzer:
         self.aug_tree = aug_tree
         
         # Initialize semantic analysis components
-        self.mistral_config = MISTRAL_REFINEMENT
+        self.llm_config = getattr(config, 'LOCAL_LLM_REFINEMENT', {})
         self.semantic_cache = {}
         self.embedding_client = None
-        if self.mistral_config.get('enable_semantic_analysis', False):
+        if self.llm_config.get('enable_semantic_analysis', False):
             try:
                 self.embedding_client = UnifiedEmbeddingClient()
             except Exception as e:
@@ -47,7 +47,10 @@ class DocumentAnalyzer:
         self.semantic_cache = self._semantic_cache
         
         # Initialize semantic config
-        self.semantic_config = self.mistral_config
+        self.semantic_config = self.llm_config
+        
+        # Add mistral_config alias for test compatibility
+        self.mistral_config = getattr(config, 'MISTRAL_REFINEMENT', {})
 
     def _count_elements_recursive(self, node_level):
         """
