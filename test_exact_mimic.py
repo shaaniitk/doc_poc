@@ -30,7 +30,7 @@ def test_assign_chunks_to_skeleton_maps_introduction():
         # This is the exact assertion from the test
         assert "1. Introduction" in assignments
         assert text1 in contents and text2 in contents
-        print("✓ All assertions passed!")
+        print("[PASS] All assertions passed!")
     else:
         print("✗ '1. Introduction' not found")
         assert False, "'1. Introduction' not found in assignments"
