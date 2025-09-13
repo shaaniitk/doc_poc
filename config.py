@@ -22,11 +22,18 @@ LLM_CONFIG = {
     "provider": "huggingface_local",  # Local Hugging Face models
     "model": "Qwen/Qwen2.5-3B-Instruct",  # Qwen 2.5-3B with 32K context window for GPU systems
     "api_key_env": None,  # No API key needed for local models
-    "max_tokens": 4096,  # Much larger context window for better document processing
+    "max_tokens": 4096,  # Large context window for better document processing
     "temperature": 0.1,
-    "timeout": 30,
-    "device": "auto",  # Will use GPU automatically
-    "local_model_path": "./models/llm"  # Use cached models from download script
+    "timeout": 60,
+    "device": "auto",  # Will detect and use GPU when CUDA is properly configured
+    "local_model_path": "./models/llm",  # Use cached models from download script
+    # GPU optimization settings for high VRAM systems
+    "torch_dtype": "float16",  # Use float16 for better GPU performance and memory efficiency
+    "device_map": "auto",  # Automatically distribute model across available GPUs
+    "load_in_8bit": False,  # Disable quantization for better quality with high VRAM
+    "load_in_4bit": False,  # Disable 4-bit quantization
+    "trust_remote_code": True,  # Allow custom model code
+    "use_cache": True  # Enable KV cache for faster inference
 }
 
 # Alternative API-based configurations (uncomment to use):

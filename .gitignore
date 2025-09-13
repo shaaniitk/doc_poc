@@ -12,16 +12,35 @@ __pycache__/
 # Downloaded TeX sources
 /downloads/
 
-# Downloaded models
-/models/
-
 # Processed and augmented documents
 /outputs/
 output/
 
+# Project specific
+models/
+*.log
+*.json
+sessions/
+output/
+temp/
+
+# GPU and ML related
+*.onnx
+*.pt
+*.pth
+*.safetensors
+*.bin
+
+# Test outputs
+test_results/
+*.test.json
+
+# Local configuration
+local_config.py
+.env.local
+
 # Intermediate and compiled LaTeX files
 *_preprocessed.tex
 *.aux
-*.log
 *.pdf
 *.synctex.gz

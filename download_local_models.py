@@ -50,10 +50,9 @@ MODEL_PROFILES = {
             "sentence-transformers/all-MiniLM-L6-v2"
         ],
         "llm_models": [
-            "microsoft/DialoGPT-large",
-            "bert-base-uncased",
-            "google/gemma-7b-it",
-            "Qwen/Qwen2.5-3B-Instruct"
+            "Qwen/Qwen2.5-3B-Instruct",  # Primary model for GPU systems with high VRAM
+            "microsoft/DialoGPT-large",  # Backup option
+            "microsoft/DialoGPT-medium"   # Lightweight fallback
         ],
         "description": "Good balance of performance and resource usage",
         "total_size_gb": 4.2
