@@ -151,14 +151,17 @@ class UnifiedLLMClient:
             prompt = "\n".join([f"{msg['role']}: {msg['content']}" for msg in messages])
             prompt += "\nassistant:"
             
-            # Create text generation pipeline
+            # Create text generation pipeline with cache folder
+            cache_dir = llm_config.get('cache_folder', './models')
             generator = pipeline(
                 "text-generation",
                 model=model_name,
                 tokenizer=model_name,
                 device=device,
                 torch_dtype=torch.float16 if device >= 0 else torch.float32,
-                trust_remote_code=True
+                trust_remote_code=True,
+                model_kwargs={'cache_dir': cache_dir},
+                tokenizer_kwargs={'cache_dir': cache_dir}
             )
             
             # Generate response

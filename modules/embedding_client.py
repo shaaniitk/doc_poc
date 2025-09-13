@@ -43,8 +43,9 @@ class UnifiedEmbeddingClient:
                 openai.api_key = os.getenv('OPENAI_API_KEY')
                 self.model = None  # OpenAI doesn't need a local model instance
             else:
-                # Default to SentenceTransformer
-                self.model = SentenceTransformer(self.model_name)
+                # Default to SentenceTransformer with local cache
+                cache_folder = self.config.get('cache_folder', './models')
+                self.model = SentenceTransformer(self.model_name, cache_folder=cache_folder)
         except Exception as e:
             raise ProcessingError(f"Failed to load embedding model '{self.model_name}': {e}")
     

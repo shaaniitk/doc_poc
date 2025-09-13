@@ -27,6 +27,7 @@ LLM_CONFIG = {
     "timeout": 60,
     "device": "auto",  # Will detect and use GPU when CUDA is properly configured
     "local_model_path": "./models/llm",  # Use cached models from download script
+    "cache_folder": "./models",  # Use local models cache
     # GPU optimization settings for high VRAM systems
     "torch_dtype": "float16",  # Use float16 for better GPU performance and memory efficiency
     "device_map": "auto",  # Automatically distribute model across available GPUs
@@ -99,6 +100,7 @@ SEMANTIC_MAPPING_CONFIG = {
     "device": "auto",
     "batch_size": 32,
     "top_k_candidates": 3,
+    "cache_folder": "./models",  # Use local models cache
     # Accept borderline matches within this margin below the threshold
     "soft_accept_margin": 0.05,
     # Also accept if the top-1 similarity exceeds top-2 by at least this gap
