@@ -160,8 +160,7 @@ class UnifiedLLMClient:
                 device=device,
                 torch_dtype=torch.float16 if device >= 0 else torch.float32,
                 trust_remote_code=True,
-                model_kwargs={'cache_dir': cache_dir},
-                tokenizer_kwargs={'cache_dir': cache_dir}
+                model_kwargs={'cache_dir': cache_dir}
             )
             
             # Generate response
