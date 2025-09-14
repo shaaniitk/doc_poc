@@ -8,6 +8,7 @@ final, processed document tree into a valid, well-formatted output file.
 import os
 from datetime import datetime
 import config
+from config import OUTPUT_FORMATS
 import json 
 import re
 from typing import Dict, Any, List, Tuple

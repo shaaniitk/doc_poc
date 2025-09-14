@@ -226,11 +226,67 @@ class ASTChunker:
         content = ''.join([n.latex_verbatim() for n in buffer]).strip()
         if not content: return []
         parent_section_str = ' -> '.join(hierarchy) if hierarchy else 'Preamble'
-        chunk_data = {
-            'type': 'paragraph', 'content': content, 'parent_section': parent_section_str,
-            'metadata': { 'hierarchy_path': hierarchy.copy() if hierarchy else ['Preamble'], **self._extract_metadata(buffer) }
-        }
-        return [chunk_data]
+        
+        # Apply token-aware chunking if content exceeds limits
+        max_tokens = LLM_CHUNK_CONFIG.get('max_tokens_per_chunk', 400)
+        overlap_tokens = LLM_CHUNK_CONFIG.get('overlap_tokens', 50)
+        
+        # Simple token estimation (rough approximation: 1 token ≈ 4 characters)
+        estimated_tokens = len(content) // 4
+        
+        if estimated_tokens <= max_tokens:
+            # Content fits within limits, return as single chunk
+            chunk_data = {
+                'type': 'paragraph', 'content': content, 'parent_section': parent_section_str,
+                'metadata': { 'hierarchy_path': hierarchy.copy() if hierarchy else ['Preamble'], **self._extract_metadata(buffer) }
+            }
+            return [chunk_data]
+        else:
+            # Content too large, split into smaller chunks
+            return self._split_large_content(content, parent_section_str, hierarchy, buffer, max_tokens, overlap_tokens)
+    
+    def _split_large_content(self, content, parent_section_str, hierarchy, buffer, max_tokens, overlap_tokens):
+        """Split large content into token-aware chunks"""
+        chunks = []
+        
+        # Split by sentences first to maintain semantic coherence
+        sentences = re.split(r'(?<=[.!?])\s+', content)
+        
+        current_chunk = ""
+        current_tokens = 0
+        
+        for sentence in sentences:
+            sentence_tokens = len(sentence) // 4  # Token estimation
+            
+            # If adding this sentence would exceed limit, finalize current chunk
+            if current_tokens + sentence_tokens > max_tokens and current_chunk:
+                chunk_data = {
+                    'type': 'paragraph', 'content': current_chunk.strip(), 'parent_section': parent_section_str,
+                    'metadata': { 'hierarchy_path': hierarchy.copy() if hierarchy else ['Preamble'], **self._extract_metadata(buffer) }
+                }
+                chunks.append(chunk_data)
+                
+                # Start new chunk with overlap
+                overlap_content = current_chunk.split()[-overlap_tokens:] if overlap_tokens > 0 else []
+                current_chunk = ' '.join(overlap_content) + ' ' + sentence if overlap_content else sentence
+                current_tokens = len(current_chunk) // 4
+            else:
+                # Add sentence to current chunk
+                if current_chunk:
+                    current_chunk += ' ' + sentence
+                else:
+                    current_chunk = sentence
+                current_tokens += sentence_tokens
+        
+        # Add final chunk if there's remaining content
+        if current_chunk.strip():
+            chunk_data = {
+                'type': 'paragraph', 'content': current_chunk.strip(), 'parent_section': parent_section_str,
+                'metadata': { 'hierarchy_path': hierarchy.copy() if hierarchy else ['Preamble'], **self._extract_metadata(buffer) }
+            }
+            chunks.append(chunk_data)
+        
+        return chunks
 
     def _create_environment_chunk(self, node, hierarchy):
         parent_section_str = ' -> '.join(hierarchy) if hierarchy else 'Preamble'
@@ -732,11 +788,25 @@ class EmbeddingGuidedChunker:
             chunk_text = " ".join(chunk_sentences)
             token_count = self._token_len(chunk_text)
             
-            if token_count > self.max_tokens and len(chunk_sentences) > 1:
-                # Split large chunk further
-                mid_point = len(chunk_sentences) // 2
-                chunks.append(chunk_sentences[:mid_point])
-                chunks.append(chunk_sentences[mid_point:])
+            if token_count > self.max_tokens:
+                if len(chunk_sentences) > 1:
+                    # Split large chunk further
+                    mid_point = len(chunk_sentences) // 2
+                    chunks.append(chunk_sentences[:mid_point])
+                    chunks.append(chunk_sentences[mid_point:])
+                else:
+                    # Handle single long sentence by splitting at word boundaries
+                    single_sentence = chunk_sentences[0]
+                    words = single_sentence.split()
+                    if len(words) > 10:  # Only split if sentence has enough words
+                        mid_word = len(words) // 2
+                        first_half = " ".join(words[:mid_word])
+                        second_half = " ".join(words[mid_word:])
+                        chunks.append([first_half])
+                        chunks.append([second_half])
+                    else:
+                        # Keep very short sentences as-is even if they exceed token limit
+                        chunks.append(chunk_sentences)
             else:
                 chunks.append(chunk_sentences)
             

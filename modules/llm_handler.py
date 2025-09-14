@@ -122,11 +122,42 @@ class HierarchicalProcessingAgent:
 
             # Determine the source content for this node
             if generative_context:
-                node_content = generative_context
+                # Truncate generative_context to fit within token limits for GPT-2
+                max_tokens = 400  # Conservative limit for generative context (leave room for prompts)
+                # Simple token estimation (rough approximation: 1 token ≈ 4 characters)
+                estimated_tokens = len(generative_context) // 4
+                
+                if estimated_tokens > max_tokens:
+                    # Truncate to fit within token limit
+                    max_chars = max_tokens * 4
+                    node_content = generative_context[:max_chars] + "..."
+                    log.warning(f"Truncated generative context from {estimated_tokens} to ~{max_tokens} tokens")
+                else:
+                    node_content = generative_context
+                    
                 log.info(f"  Generatively processing node: {' -> '.join(current_path)}")
             else:
                 log.info(f"  Refactoring node: {' -> '.join(current_path)}")
-                node_content = "\n\n".join([chunk['content'] for chunk in node_data.get('chunks', [])])
+                # Combine chunks while respecting token limits
+                chunks = node_data.get('chunks', [])
+                if chunks:
+                    # Start with first chunk and add others if they fit within token limit
+                    node_content = chunks[0]['content']
+                    max_tokens = 600  # More conservative limit for GPT-2 (1024 - 400 for prompts/context)
+                    
+                    # Simple token estimation (rough approximation: 1 token ≈ 4 characters)
+                    current_tokens = len(node_content) // 4
+                    
+                    for chunk in chunks[1:]:
+                        chunk_tokens = len(chunk['content']) // 4
+                        if current_tokens + chunk_tokens + 10 <= max_tokens:  # +10 for separator
+                            node_content += "\n\n" + chunk['content']
+                            current_tokens += chunk_tokens + 10
+                        else:
+                            log.warning(f"Skipping chunk to stay within token limit. Current: {current_tokens}, would add: {chunk_tokens}")
+                            break
+                else:
+                    node_content = ""
 
             if node_content:
                 # --- Feature: Rich Context Gathering ---

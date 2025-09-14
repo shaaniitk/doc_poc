@@ -163,10 +163,36 @@ class UnifiedLLMClient:
                 model_kwargs={'cache_dir': cache_dir}
             )
             
+            # GPT-2 specific: Ensure prompt + max_tokens doesn't exceed 1024 token limit
+            tokenizer = generator.tokenizer
+            prompt_tokens = tokenizer.encode(prompt)
+            
+            # GPT-2 has a hard limit of 1024 tokens total (input + output)
+            max_context_length = 1024
+            available_tokens_for_generation = max_context_length - len(prompt_tokens) - 10  # 10 token safety buffer
+            
+            if available_tokens_for_generation <= 0:
+                # Truncate prompt if it's too long
+                max_prompt_tokens = max_context_length - max_tokens - 10
+                if max_prompt_tokens <= 0:
+                    max_prompt_tokens = max_context_length // 2  # Use half for prompt, half for generation
+                    max_tokens = max_context_length - max_prompt_tokens - 10
+                
+                # Truncate from the beginning to keep the most recent context
+                truncated_tokens = prompt_tokens[-max_prompt_tokens:]
+                prompt = tokenizer.decode(truncated_tokens, skip_special_tokens=True)
+                available_tokens_for_generation = max_tokens
+            
+            # Use the smaller of requested max_tokens or available tokens
+            actual_max_tokens = min(max_tokens, available_tokens_for_generation)
+            
+            if actual_max_tokens <= 0:
+                raise LLMError("Prompt too long for GPT-2 model. Cannot generate any tokens.")
+            
             # Generate response
             result = generator(
                 prompt,
-                max_new_tokens=max_tokens,
+                max_new_tokens=actual_max_tokens,
                 temperature=temperature,
                 do_sample=True,
                 pad_token_id=generator.tokenizer.eos_token_id

@@ -10,8 +10,8 @@
 
 # --- NEW: Configuration for LangChain-based Chunkers ---
 LANGCHAIN_CHUNK_CONFIG = {
-    'md_chunk_size': 1500,
-    'md_chunk_overlap': 200,
+    'md_chunk_size': 800,
+    'md_chunk_overlap': 50,
     
 }
 
@@ -20,20 +20,20 @@ LANGCHAIN_CHUNK_CONFIG = {
 # LLM Configuration - Choose between local or API-based models
 LLM_CONFIG = {
     "provider": "huggingface_local",  # Local Hugging Face models
-    "model": "Qwen/Qwen2.5-3B-Instruct",  # Qwen 2.5-3B with 32K context window for GPU systems
+    "model": "mistralai/Mistral-7B-v0.3",  # MISTRAL model (registered access)
     "api_key_env": None,  # No API key needed for local models
-    "max_tokens": 4096,  # Large context window for better document processing
+    "max_tokens": 2048,  # Standard context window for Phi-3
     "temperature": 0.1,
-    "timeout": 60,
-    "device": "auto",  # Will detect and use GPU when CUDA is properly configured
+    "timeout": 300,  # Standard timeout for Phi-3
+    "device": "auto",  # Auto-detect best device (GPU if available, else CPU)
     "local_model_path": "./models/llm",  # Use cached models from download script
     "cache_folder": "./models",  # Use local models cache
-    # GPU optimization settings for high VRAM systems
-    "torch_dtype": "float16",  # Use float16 for better GPU performance and memory efficiency
-    "device_map": "auto",  # Automatically distribute model across available GPUs
-    "load_in_8bit": False,  # Disable quantization for better quality with high VRAM
-    "load_in_4bit": False,  # Disable 4-bit quantization
-    "trust_remote_code": True,  # Allow custom model code
+    # Optimized settings for MISTRAL
+    "torch_dtype": "float16",  # Optimized precision for MISTRAL
+    "device_map": "auto",  # Enable automatic device mapping
+    "load_in_8bit": True,  # Enable quantization for MISTRAL
+    "load_in_4bit": False,  # Keep 4-bit disabled for stability
+    "trust_remote_code": False,  # MISTRAL doesn't need custom code
     "use_cache": True  # Enable KV cache for faster inference
 }
 
@@ -94,11 +94,11 @@ LLM_CONFIG = {
 
 # Option 2: Local SentenceTransformer Model (default - no API key required)
 SEMANTIC_MAPPING_CONFIG = {
-    "model": "sentence-transformers/all-mpnet-base-v2",
+    "model": "sentence-transformers/all-MiniLM-L6-v2",  # Lightweight embedding model (80MB vs 420MB)
     "provider": "sentence_transformer",
     "similarity_threshold": 0.6,
-    "device": "auto",
-    "batch_size": 32,
+    "device": "cpu",  # Force CPU for consistent performance
+    "batch_size": 16,  # Reduced batch size for lower memory usage
     "top_k_candidates": 3,
     "cache_folder": "./models",  # Use local models cache
     # Accept borderline matches within this margin below the threshold
@@ -119,9 +119,9 @@ SEMANTIC_MAPPING_CONFIG = {
 # LLM-Enhanced Chunking Configuration
 LLM_CHUNK_CONFIG = {
     # The minimum number of characters a paragraph chunk must have to be considered for a semantic split.
-    "SEMANTIC_SPLIT_THRESHOLD": 1500,
+    "SEMANTIC_SPLIT_THRESHOLD": 800,
     # Whether to enable this feature. Allows for easy toggling for performance.
-    "ENABLE_LLM_ENHANCEMENT": True
+    "ENABLE_LLM_ENHANCEMENT": False
 }
 
 # --- NEW: Embedding-guided cohesion (Phase 1, OFF by default) ---
@@ -172,8 +172,8 @@ EMBEDDING_CONFIG = {
 CHUNKING_EMBEDDING = {
     "enable": True,
     "cohesion_threshold": 0.7,
-    "max_tokens_per_chunk": 1500,
-    "overlap_tokens": 200,
+    "max_tokens_per_chunk": 300,
+    "overlap_tokens": 50,
     "fallback_provider": "sentence_transformer",
     "boundary_detection_method": "cohesion_minima",
     "adaptive_sizing": True,
@@ -188,7 +188,7 @@ LOCAL_LLM_REFINEMENT = {
     "only_for_low_confidence": True,
     "confidence_threshold": 0.6,
     "max_cases_per_doc": 10,
-    "refinement_model": "microsoft/DialoGPT-large",
+    "refinement_model": "mistralai/Mistral-7B-v0.3",
     "temperature": 0.1,
     "max_tokens": 1024,
     "device": "auto"
@@ -196,6 +196,22 @@ LOCAL_LLM_REFINEMENT = {
 
 # --- Alias for test compatibility ---
 MISTRAL_REFINEMENT = LOCAL_LLM_REFINEMENT
+
+# Output format configurations
+OUTPUT_FORMATS = {
+    "latex": {
+        "extension": ".tex",
+        "description": "LaTeX document format"
+    },
+    "markdown": {
+        "extension": ".md",
+        "description": "Markdown document format"
+    },
+    "json": {
+        "extension": ".json",
+        "description": "JSON document format"
+    }
+}
 
 # Alternative LLM providers
 LLM_PROVIDERS = {
@@ -499,61 +515,43 @@ Example Response: "ROOT"
 **Parent Path:**
 """,
  'hierarchical_refactor': """
-    You are a professional technical editor refactoring a document section by section.
-    
-    You have already processed some sections. Here is a summary of the most relevant section you have already written, to ensure consistency:
-    MEMORY OF PREVIOUSLY WRITTEN CONTENT:
-    ---
-    {memory_context}
-    ---
+You are a professional technical editor. Refactor the following LaTeX content for maximum clarity, conciseness, and professional academic tone.
 
-    To improve coherence, consider these semantically related excerpts from other parts of the document:
-    RELATED CONTEXT:
-    ---
-    {semantic_context}
-    ---
-    
-    GLOBAL DOCUMENT CONTEXT: {global_context}
-    PARENT SECTION CONTEXT: {parent_context}
+**Context for consistency:**
+Previous content: {memory_context}
+Related excerpts: {semantic_context}
+Document abstract: {global_context}
+Parent section: {parent_context}
 
-    CURRENT CONTENT TO REFACTOR (for section '{node_path}'):
-    ---
-    {node_content}
-    ---
-    Your task is to rewrite the CURRENT CONTENT to be clear, professional, and stylistically consistent with your MEMORY and the other contexts provided. Adhere strictly to the specified output format.
+**Section:** "{node_path}"
+
+**LaTeX content to refactor:**
+{node_content}
+
+**Requirements:**
+- Preserve ALL LaTeX commands, environments, citations, and references exactly
+- Maintain original technical meaning
+- Apply formatting only to specific words, not entire paragraphs
+- Output ONLY the refactored LaTeX content with no additional text
+
 """,
 
     # NEW PROMPT for the self-critique pass
     "self_critique_and_refine": """
-You are a meticulous quality assurance editor. You will be given a piece of text that has already been refactored once, along with the original context. Your job is to critique the refactored text and then produce a final, improved version.
+You are a quality assurance editor. Improve the following refactored text for maximum clarity, conciseness, and professional academic tone.
 
-**Original Context:**
-- Document Path: "{node_path}"
-- Original Content Summary: A piece of text discussing the main topic of "{node_path}".
+**Document Section:** "{node_path}"
 
-**Refactored Text to Review:**
+**Text to Improve:**
 {refactored_text}
 
-**Critique Checklist:**
-1.  **Clarity & Conciseness:** Is the text as clear and direct as possible? Is there any jargon that could be simplified? Are there any redundant phrases?
-2.  **Logical Flow:** Do the ideas connect smoothly? Is the argument easy to follow?
-3.  **Technical Preservation:** Is it plausible that all original LaTeX commands, citations, and technical details were preserved? (You don't have the original, so assess based on structure).
-4.  **Tone:** Is the tone appropriate for a formal academic or technical paper?
+**Instructions:**
+1. Enhance clarity and remove redundant phrases
+2. Ensure smooth logical flow between ideas
+3. Preserve all LaTeX commands, citations, and technical details exactly
+4. Maintain formal academic tone
+5. Output ONLY the improved text with no explanations or preamble
 
-**Your Task:**
-First, write a brief critique of the "Refactored Text to Review" based on the checklist above.
-Second, based on your critique, provide a final, polished version of the text.
-
- **RULES:**
-    1. Your output MUST be ONLY the final, polished version of the text.
-    2. Do NOT provide any explanation, critique, or list of improvements.
-    3. Do NOT use any conversational filler.
-    4. Your response MUST begin with the phrase "Final Polished Version:" followed by the text.
-
-**Critique:**
-[Your brief critique here]
-
-**Final Polished Version:**
 """,
 # NEW PROMPT for extracting key terms from the entire document
     "term_extraction": """
@@ -644,43 +642,25 @@ You are a document structuring expert. Your task is to determine the single best
 """,
 
 'hierarchical_refactor': """
-You are a professional technical editor specializing in academic papers. Your task is to refactor a piece of LaTeX content. Your output MUST BE only the refactored, valid LaTeX content.
+You are a professional technical editor. Refactor the following LaTeX content for maximum clarity, conciseness, and professional academic tone.
 
-**-- CONTEXTUAL INFORMATION --**
+**Context for consistency:**
+Previous content: {memory_context}
+Related excerpts: {semantic_context}
+Document abstract: {global_context}
+Parent section: {parent_context}
 
-1.  **YOUR MEMORY (Previously Written Content):** To ensure consistency, here is the most relevant content you have already written for a previous section. Match its style and terminology.
-    ---
-    {memory_context}
-    ---
+**Section:** "{node_path}"
 
-2.  **SEMANTIC CONTEXT (Related Document Excerpts):** Here are other parts of the document that are thematically related to the current task. Use them to improve coherence.
-    ---
-    {semantic_context}
-    ---
-
-3.  **HIERARCHICAL CONTEXT:**
-    -   **Full Document Abstract:** {global_context}
-    -   **Parent Section Content:** {parent_context}
-
-**-- YOUR TASK --**
-
-You are currently working on the section: **"{node_path}"**.
-
-**Content to Refactor:**
-```latex
+**LaTeX content to refactor:**
 {node_content}
 
-  
--- INSTRUCTIONS & RULES --
+**Requirements:**
+- Preserve ALL LaTeX commands, environments, citations, and references exactly
+- Maintain original technical meaning
+- Apply formatting only to specific words, not entire paragraphs
+- Output ONLY the refactored LaTeX content with no additional text
 
-1. Rewrite the "Content to Refactor" for maximum clarity, conciseness, and a professional academic tone.
-2.  Preserve Core Elements: You MUST preserve all original LaTeX commands, environments (e.g., \\begin{{equation}}...\\end{{equation}}), citations (\\cite{{...}}), and references (\\ref{{...}}) exactly as they appear.
-3.  Maintain Meaning: Do NOT alter the original technical details or semantic meaning.
-4.  Formatting Rule: Do NOT wrap entire paragraphs or multi-line content in formatting commands (e.g., \\textbf{{...}}). Apply formatting only to specific words or short phrases.
-5.  Do NOT add or remove any LaTeX commands, environments, citations, or references.
-6.  Output:Your response must contain ONLY the refactored LaTeX content for the section. Do not include section headers (\\section{{...}}) or any other text outside of the rewritten content itself.
-
-Refactored LaTeX Content:
 """,
 
  'semantic_split_paragraph': """
@@ -822,15 +802,27 @@ KG_CONFIG = {
 # === LOCAL MODEL CONFIGURATION ===
 # Configuration for running models locally without external APIs
 LOCAL_MODEL_CONFIG = {
-    "profile": "balanced",
-    "embedding_model": "sentence-transformers/all-mpnet-base-v2",
-    "llm_model": "microsoft/DialoGPT-large",
-    "device": "auto",
-    "batch_size": 32,
+    "profile": "performance",  # Performance profile for MISTRAL
+    "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",  # Lightweight embedding model
+    "llm_model": "mistralai/Mistral-7B-v0.3",  # MISTRAL model
+    "device": "auto",  # Auto-detect best device (GPU if available, else CPU)
+    "batch_size": 1,  # Conservative batch size for MISTRAL
     "cache_dir": "./models",  # Local model cache directory
-    "download_timeout": 300,  # Timeout for model downloads (seconds)
-    "enable_gpu_if_available": True,
+    "download_timeout": 600,  # Extended timeout for MISTRAL
+    "enable_gpu_if_available": True,  # Enable GPU for better performance with MISTRAL
     "memory_optimization": True
+}
+
+# Hugging Face Configuration for local models
+HUGGINGFACE_CONFIG = {
+    "model_name": "mistralai/Mistral-7B-v0.3",  # MISTRAL model
+    "max_tokens": 2048,
+    "timeout": 300,
+    "torch_dtype": "float16",  # Optimized for MISTRAL
+    "load_in_8bit": True,  # Enable quantization for MISTRAL
+    "profile": "performance",  # Performance profile for MISTRAL
+    "batch_size": 1,  # Conservative batch size for MISTRAL
+    "download_timeout": 600,  # 10 minutes for MISTRAL
 }
 
 # Hardware requirements for different profiles
