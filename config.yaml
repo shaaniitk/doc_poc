@@ -1,0 +1,177 @@
+# LangGraph Document Processing Pipeline Configuration
+# Production-ready configuration with comprehensive settings
+
+# Application settings
+environment: development  # development, testing, staging, production
+debug: true
+version: "1.0.0"
+
+# LLM Configuration
+llm:
+  provider: openai  # openai, anthropic, azure_openai, huggingface, local
+  model: gpt-3.5-turbo
+  # api_key: ${OPENAI_API_KEY}  # Set via environment variable
+  # api_base: null
+  # api_version: null
+  max_tokens: 4000
+  temperature: 0.7
+  timeout: 30
+  max_retries: 3
+  retry_delay: 1.0
+  rate_limit_rpm: 60
+  rate_limit_tpm: 40000
+
+# Document Chunking Configuration
+chunking:
+  strategy: sentence_aware  # fixed_size, sentence_aware, semantic, paragraph, sliding_window, adaptive
+  chunk_size: 1000
+  chunk_overlap: 200
+  min_chunk_size: 100
+  max_chunk_size: 2000
+  preserve_sentences: true
+  preserve_paragraphs: true
+  use_semantic_splitting: false
+  semantic_threshold: 0.7
+
+# Processing Configuration
+processing:
+  mode: parallel  # sequential, parallel, batch, streaming, adaptive
+  max_concurrent: 5
+  batch_size: 10
+  timeout_seconds: 300
+  enable_caching: true
+  cache_ttl_hours: 24
+  enable_quality_checks: true
+  quality_threshold: 0.8
+
+# Monitoring and Logging
+monitoring:
+  enable_monitoring: true
+  log_level: INFO  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  log_file: logs/app.log
+  enable_metrics: true
+  metrics_interval: 60
+  enable_health_checks: true
+  health_check_interval: 30
+  enable_performance_tracking: true
+  memory_limit_mb: 4096
+  cpu_limit_percent: 80.0
+
+# Security Configuration
+security:
+  enable_input_validation: true
+  max_file_size_mb: 100
+  allowed_file_types:
+    - .txt
+    - .pdf
+    - .docx
+    - .md
+    - .tex
+    - .rtf
+  sanitize_output: true
+  enable_rate_limiting: true
+  rate_limit_requests_per_minute: 60
+  enable_audit_logging: true
+  mask_sensitive_data: true
+
+# Storage Configuration
+storage:
+  input_dir: input
+  output_dir: output
+  cache_dir: cache
+  temp_dir: temp
+  log_dir: logs
+  backup_dir: backup
+  enable_compression: false
+  cleanup_temp_files: true
+  max_cache_size_mb: 1000
+
+# Database Configuration (optional)
+database:
+  enable_database: false
+  database_type: sqlite  # sqlite, postgresql, mongodb
+  # connection_string: null
+  host: localhost
+  port: 5432
+  database: doc_processing
+  # username: null
+  # password: null
+  pool_size: 5
+  max_overflow: 10
+
+# Custom Settings
+custom_settings:
+  # Knowledge Graph Settings
+  knowledge_graph:
+    enable_kg_extraction: true
+    extraction_method: hybrid  # rule_based, nlp_based, llm_based, hybrid
+    min_entity_confidence: 0.7
+    min_relationship_confidence: 0.6
+    max_entities_per_chunk: 20
+    enable_graph_analysis: true
+    
+  # Output Generation Settings
+  output:
+    default_format: markdown  # text, markdown, json, pdf, html, docx
+    enable_templates: true
+    template_engine: jinja2
+    enable_visualization: false
+    include_metadata: true
+    include_processing_stats: true
+    
+  # Performance Optimization
+  performance:
+    enable_async_processing: true
+    use_process_pool: false
+    process_pool_size: 4
+    enable_memory_optimization: true
+    garbage_collection_threshold: 1000
+    
+  # Error Handling
+  error_handling:
+    enable_circuit_breaker: true
+    circuit_breaker_threshold: 5
+    circuit_breaker_timeout: 60
+    max_retry_attempts: 3
+    retry_backoff_factor: 2.0
+    enable_graceful_degradation: true
+    
+  # Development Settings
+  development:
+    enable_debug_mode: true
+    save_intermediate_results: true
+    enable_profiling: false
+    profile_output_dir: profiles
+    
+  # Integration Settings
+  integrations:
+    redis:
+      enabled: false
+      host: localhost
+      port: 6379
+      db: 0
+      password: null
+      
+    prometheus:
+      enabled: false
+      port: 8000
+      endpoint: /metrics
+      c
+    webhook:
+      enabled: false
+      url: null
+      events: ["processing_complete", "error_occurred"]
+      
+  # Model Settings
+  models:
+    embedding_model: sentence-transformers/all-MiniLM-L6-v2
+    similarity_threshold: 0.8
+    enable_local_models: false
+    model_cache_dir: models
+    
+  # Experimental Features
+  experimental:
+    enable_streaming_processing: false
+    enable_adaptive_chunking: false
+    enable_multi_modal_processing: false
+    enable_real_time_monitoring: false

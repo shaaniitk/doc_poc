@@ -1,0 +1,179 @@
+version: '3.8'
+
+services:
+  # Main document processing service
+  doc-processor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+      args:
+        BUILD_DATE: ${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
+        VERSION: ${VERSION:-1.0.0}
+        VCS_REF: ${VCS_REF:-$(git rev-parse --short HEAD)}
+    container_name: doc-processor
+    restart: unless-stopped
+    environment:
+      - DOC_PROCESSING_ENV=production
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ENABLE_MONITORING=true
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-docprocessing}@postgres:5432/docprocessing
+    volumes:
+      - ./input:/app/input:ro
+      - ./output:/app/output
+      - ./cache:/app/cache
+      - ./logs:/app/logs
+      - ./config:/app/config:ro
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - doc-processing
+    healthcheck:
+      test: ["CMD", "python", "-c", "from core.monitoring import HealthChecker; HealthChecker().check_health()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: '2.0'
+        reservations:
+          memory: 2G
+          cpus: '1.0'
+
+  # Redis for caching and session management
+  redis:
+    image: redis:7-alpine
+    container_name: doc-processor-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - doc-processing
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # PostgreSQL for persistent storage
+  postgres:
+    image: postgres:15-alpine
+    container_name: doc-processor-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=docprocessing
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-docprocessing}
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - doc-processing
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d docprocessing"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Monitoring with Prometheus (optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: doc-processor-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - doc-processing
+    profiles:
+      - monitoring
+
+  # Grafana for visualization (optional)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: doc-processor-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    ports:
+      - "3000:3000"
+    networks:
+      - doc-processing
+    profiles:
+      - monitoring
+    depends_on:
+      - prometheus
+
+  # Development service (for local development)
+  doc-processor-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: doc-processor-dev
+    environment:
+      - DOC_PROCESSING_ENV=development
+      - LOG_LEVEL=DEBUG
+      - ENABLE_MONITORING=true
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    volumes:
+      - .:/app
+      - ./input:/app/input
+      - ./output:/app/output
+      - ./cache:/app/cache
+      - ./logs:/app/logs
+    ports:
+      - "8001:8000"
+      - "8888:8888"  # Jupyter
+    networks:
+      - doc-processing
+    profiles:
+      - development
+    command: >
+      sh -c "jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root &
+             python enhanced_main.py --config config.yaml --debug"
+
+networks:
+  doc-processing:
+    driver: bridge
+    name: doc-processing-network
+
+volumes:
+  redis_data:
+    name: doc-processor-redis-data
+  postgres_data:
+    name: doc-processor-postgres-data
+  prometheus_data:
+    name: doc-processor-prometheus-data
+  grafana_data:
+    name: doc-processor-grafana-data
