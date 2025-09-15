@@ -546,6 +546,56 @@ class AdaptiveChunker:
         self.max_tokens_fine = max_tokens_fine
         self.overlap_tokens = overlap_tokens
         self.granularity_multipliers = granularity_multipliers  # (medium_factor, coarse_factor)
+    
+    def process_chunks(self, content: str, source_path: str = "") -> List[Dict[str, Any]]:
+        """Process content into chunks - wrapper around the chunk method"""
+        try:
+            result = self.chunk(content, source_path)
+            # Ensure result is a dict and return the fine-grained chunks as the default
+            if isinstance(result, dict):
+                return result.get('fine', [])
+            elif isinstance(result, list):
+                return result
+            else:
+                log.warning(f"Unexpected result type from chunk method: {type(result)}")
+                return self._fallback_chunk(content, source_path)
+        except Exception as e:
+            log.error(f"Error in process_chunks: {e}")
+            # Fallback to simple chunking
+            return self._fallback_chunk(content, source_path)
+    
+    def _fallback_chunk(self, content: str, source_path: str = "") -> List[Dict[str, Any]]:
+        """Simple fallback chunking when main chunking fails"""
+        # Simple sentence-based chunking as fallback
+        sentences = content.split('. ')
+        chunks = []
+        current_chunk = ""
+        
+        for i, sentence in enumerate(sentences):
+            if len(current_chunk) + len(sentence) < self.max_tokens_fine * 4:  # rough token estimate
+                current_chunk += sentence + ". "
+            else:
+                if current_chunk:
+                    chunks.append({
+                        'content': current_chunk.strip(),
+                        'chunk_id': str(uuid.uuid4()),
+                        'source_path': source_path,
+                        'chunk_index': len(chunks),
+                        'metadata': {'type': 'fallback'}
+                    })
+                current_chunk = sentence + ". "
+        
+        # Add the last chunk
+        if current_chunk:
+            chunks.append({
+                'content': current_chunk.strip(),
+                'chunk_id': str(uuid.uuid4()),
+                'source_path': source_path,
+                'chunk_index': len(chunks),
+                'metadata': {'type': 'fallback'}
+            })
+        
+        return chunks
 
     def _token_len(self, text: str) -> int:
         if self.tokenizer is not None:

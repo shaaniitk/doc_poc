@@ -65,6 +65,39 @@ class UnifiedLLMClient:
             self.circuit_breaker.record_failure()
             raise e
     
+    def process_chunk(self, chunk_content, task_type="analyze", **kwargs):
+        """Process a chunk of content using the LLM.
+        
+        Args:
+            chunk_content (str): The content to process
+            task_type (str): Type of processing task (analyze, summarize, extract, etc.)
+            **kwargs: Additional parameters for the LLM call
+        
+        Returns:
+            str: Processed result from the LLM
+        """
+        try:
+            # Create appropriate prompt based on task type
+            if task_type == "analyze":
+                prompt = f"Analyze the following text and provide key insights:\n\n{chunk_content}"
+            elif task_type == "summarize":
+                prompt = f"Summarize the following text concisely:\n\n{chunk_content}"
+            elif task_type == "extract":
+                prompt = f"Extract key information and entities from the following text:\n\n{chunk_content}"
+            else:
+                prompt = f"Process the following text for {task_type}:\n\n{chunk_content}"
+            
+            messages = [
+                {"role": "system", "content": "You are a helpful assistant that processes text chunks efficiently."},
+                {"role": "user", "content": prompt}
+            ]
+            
+            return self.call_llm(messages, **kwargs)
+            
+        except Exception as e:
+            self.logger.error(f"Error processing chunk: {e}")
+            raise LLMError(f"Chunk processing failed: {str(e)}")
+    
     # --- Provider-Specific Implementations ---
     def _call_gemini(self, messages, model_name, max_tokens, temperature, stream):
         if not genai: raise LLMError("google-generativeai library not installed.")

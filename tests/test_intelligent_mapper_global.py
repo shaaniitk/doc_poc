@@ -3,6 +3,8 @@ import pytest
 
 from modules.intelligent_mapper import IntelligentMapper
 from modules.knowledge_graph_processor import KnowledgeGraphProcessor
+from langgraph_state import PipelineState, ProcessingStage, ChunkInfo, SemanticMapping, AnalyticsData
+from langgraph_config import ProcessingConfiguration, ConfigurationLevel
 
 
 class DummyEmbeddingModel:
@@ -60,9 +62,27 @@ def make_chunks():
 
 
 def test_global_assignment_capacity_replication(monkeypatch):
+    # Create pipeline state for tracking mapping operations
+    state = PipelineState(
+        session_id="test-global-mapping",
+        current_stage=ProcessingStage.SEMANTIC_MAPPING
+    )
+    
     # Prepare KG processor with dummy embeddings for chunks
     chunks = make_chunks()
     model = DummyEmbeddingModel()
+
+    # Create ChunkInfo objects for state tracking
+    chunk_infos = []
+    for i, chunk in enumerate(chunks):
+        chunk_info = ChunkInfo(
+            chunk_id=str(i),
+            content=chunk['content'],
+            section_path=[],
+            metadata=chunk.get('metadata', {})
+        )
+        chunk_infos.append(chunk_info)
+        state.chunks.append(chunk_info)
 
     # Create a simple KG processor stub that holds embeddings and a structural graph
     kg = KnowledgeGraphProcessor(all_chunks=[], embedding_model=model)
@@ -82,6 +102,16 @@ def test_global_assignment_capacity_replication(monkeypatch):
     mapper.config['global_capacity_alpha'] = 1.0
 
     mapped, unmapped_chunks = mapper.map_chunks(chunks)
+
+    # Create mapping info for state tracking
+    mapping_info = MappingInfo(
+        total_chunks=len(chunks),
+        mapped_chunks=len(chunks) - len(unmapped_chunks),
+        unmapped_chunks=len(unmapped_chunks),
+        mapping_strategy="global_assignment",
+        confidence_scores=[0.8, 0.9, 0.7, 0.85, 0.6]  # Mock scores
+    )
+    state.mapping_info = mapping_info
 
     # Validate that alpha-heavy chunks go to Alpha Section and beta-heavy to Beta Section
     def find_section_chunks(mapped_tree, section_title):
@@ -103,9 +133,20 @@ def test_global_assignment_capacity_replication(monkeypatch):
     # Ensure that the Assignments include assignment_score metadata
     all_chunks = alpha_chunks + beta_chunks
     assert all(isinstance(c, str) for c in all_chunks)
+    
+    # Verify state tracking
+    assert state.mapping_info.total_chunks == len(chunks)
+    assert state.mapping_info.mapping_strategy == "global_assignment"
+    assert len(state.chunks) == len(chunks)
 
 
 def test_global_assignment_with_capacity_constraints(monkeypatch):
+    # Create pipeline state for capacity constraint testing
+    state = PipelineState(
+        session_id="test-capacity-constraints",
+        current_stage=ProcessingStage.SEMANTIC_MAPPING
+    )
+    
     # Create more alpha chunks than beta chunks to test capacity logic
     alpha_contents = [
         "alpha one", "alpha two", "alpha three", "alpha four"
@@ -120,6 +161,15 @@ def test_global_assignment_with_capacity_constraints(monkeypatch):
             'content': c,
             'metadata': {}
         })
+        
+        # Add to state tracking
+        chunk_info = ChunkInfo(
+            chunk_id=str(i),
+            content=c,
+            section_path=[],
+            metadata={}
+        )
+        state.chunks.append(chunk_info)
 
     model = DummyEmbeddingModel()
     kg = KnowledgeGraphProcessor(all_chunks=[], embedding_model=model)
@@ -136,6 +186,28 @@ def test_global_assignment_with_capacity_constraints(monkeypatch):
     mapper.config['global_capacity_alpha'] = 2.0  # Capacity for alpha sections
 
     mapped, unmapped_chunks = mapper.map_chunks(chunks)
+
+    # Track mapping results in state
+    mapping_info = MappingInfo(
+        total_chunks=len(chunks),
+        mapped_chunks=len(chunks) - len(unmapped_chunks),
+        unmapped_chunks=len(unmapped_chunks),
+        mapping_strategy="capacity_constrained",
+        confidence_scores=[0.9, 0.8, 0.7, 0.6, 0.5]  # Mock scores
+    )
+    state.mapping_info = mapping_info
+    
+    # Add analytics for capacity constraint performance
+    analytics = AnalyticsInfo(
+        processing_time=2.1,
+        memory_usage=512.0,
+        tokens_processed=200,
+        stage_metrics={
+            'capacity_utilization': 0.8,
+            'constraint_violations': 0
+        }
+    )
+    state.analytics.append(analytics)
 
     def find_section_chunks(mapped_tree, section_title):
         node = mapped_tree
@@ -158,3 +230,9 @@ def test_global_assignment_with_capacity_constraints(monkeypatch):
     for chunk in alpha_chunks + beta_chunks:
         assert 'assignment_score' in chunk['metadata']
         assert 'assignment_type' in chunk['metadata']
+        
+    # Verify state tracking
+    assert state.mapping_info.total_chunks == len(chunks)
+    assert state.mapping_info.mapping_strategy == "capacity_constrained"
+    assert len(state.analytics) == 1
+    assert state.analytics[0].stage_metrics['capacity_utilization'] == 0.8

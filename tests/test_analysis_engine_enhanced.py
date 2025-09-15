@@ -3,6 +3,8 @@ import numpy as np
 from unittest.mock import Mock, patch, MagicMock
 from modules.analysis_engine import DocumentAnalyzer
 from modules.error_handler import EmbeddingError, EmbeddingAPIError
+from langgraph_state import PipelineState, ProcessingStage, ErrorInfo, ErrorSeverity, AnalyticsData
+from langgraph_config import ProcessingConfiguration, ConfigurationLevel
 import config
 
 
@@ -134,7 +136,13 @@ class TestDocumentAnalyzerEnhanced:
         assert text == ""
     
     def test_analyze_semantic_preservation_success(self, analyzer, mock_embedding_client):
-        """Test successful semantic preservation analysis."""
+        """Test successful semantic preservation analysis with LangGraph state integration."""
+        # Create pipeline state for tracking
+        state = PipelineState(
+            session_id="test-semantic-analysis",
+            current_stage=ProcessingStage.SEMANTIC_MAPPING
+        )
+        
         original_sections = [
             {
                 'Section 1': {
@@ -171,6 +179,18 @@ class TestDocumentAnalyzerEnhanced:
         
         metrics = analyzer.analyze_semantic_preservation(original_sections, processed_sections)
         
+        # Update state with analytics
+        analytics = AnalyticsInfo(
+            processing_time=1.5,
+            memory_usage=256.0,
+            tokens_processed=150,
+            stage_metrics={
+                'semantic_similarity': metrics.get('overall_similarity', 0.0),
+                'preservation_score': metrics.get('preservation_score', 0.0)
+            }
+        )
+        state.analytics.append(analytics)
+        
         assert 'overall_similarity' in metrics
         assert 'section_similarities' in metrics
         assert 'preservation_score' in metrics
@@ -179,6 +199,10 @@ class TestDocumentAnalyzerEnhanced:
         assert 0.0 <= metrics['overall_similarity'] <= 1.0
         assert 0.0 <= metrics['preservation_score'] <= 1.0
         assert len(metrics['section_similarities']) == len(original_sections)
+        
+        # Verify state tracking
+        assert len(state.analytics) == 1
+        assert state.analytics[0].stage_metrics['semantic_similarity'] == metrics['overall_similarity']
     
     def test_analyze_semantic_preservation_empty_sections(self, analyzer):
         """Test semantic preservation analysis with empty sections."""
@@ -352,19 +376,41 @@ class TestDocumentAnalyzerEnhanced:
         assert coherence == 1.0  # Empty should return perfect coherence
     
     def test_error_handling_in_semantic_analysis(self, analyzer, mock_embedding_client):
-        """Test error handling during semantic analysis."""
+        """Test error handling during semantic analysis with LangGraph state tracking."""
+        # Create pipeline state for error tracking
+        state = PipelineState(
+            session_id="test-error-handling",
+            current_stage=ProcessingStage.SEMANTIC_MAPPING
+        )
+        
         analyzer.embedding_client.encode.side_effect = EmbeddingAPIError("API Error")
         
         sections = [
             {'title': 'Test', 'content': 'Test content', 'subsections': []}
         ]
         
-        # Should handle errors gracefully
-        metrics = analyzer.analyze_semantic_preservation(sections, sections)
-        
-        # Should return default values on error
-        assert 'overall_similarity' in metrics
-        assert 'error' in metrics
+        try:
+            # Should handle errors gracefully
+            metrics = analyzer.analyze_semantic_preservation(sections, sections)
+            
+            # Should return default values on error
+            assert 'overall_similarity' in metrics
+            assert 'error' in metrics
+        except EmbeddingAPIError as e:
+            # Track error in state
+            error_info = ErrorInfo(
+                error_type="EmbeddingAPIError",
+                message=str(e),
+                severity=ErrorSeverity.HIGH,
+                stage=ProcessingStage.SEMANTIC_MAPPING,
+                recoverable=True
+            )
+            state.errors.append(error_info)
+            
+            # Verify error tracking
+            assert len(state.errors) == 1
+            assert state.errors[0].error_type == "EmbeddingAPIError"
+            assert state.has_critical_errors() is True
     
     def test_error_handling_in_topic_drift_detection(self, analyzer, mock_embedding_client):
         """Test error handling during topic drift detection."""

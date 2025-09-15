@@ -1,7 +1,12 @@
-"""
+"""Document Processing Engine with LangGraph Integration
 
+This module provides a sophisticated document processing pipeline that can operate
+in two modes:
+1. LangGraph Mode: Uses LangGraph for advanced workflow orchestration with state management,
+   conditional routing, error recovery, and analytics-driven optimization.
+2. Legacy Mode: Falls back to the original linear pipeline for compatibility.
 
-The workflow is as follows:
+The workflow includes:
 1.  Parse document(s) into a hierarchical list of chunks with metadata.
 2.  Run the multi-pass IntelligentMapper to assign all chunks to a standardized,
     hierarchical document tree, optionally using an LLM to remediate orphans.
@@ -15,9 +20,11 @@ The workflow is as follows:
 import sys
 import os
 import argparse
+import asyncio
 import logging
 import re
 
+# Core processing modules
 from modules.knowledge_graph_processor import KnowledgeGraphProcessor
 from modules.embedding_client import UnifiedEmbeddingClient
 from config import SEMANTIC_MAPPING_CONFIG
@@ -35,17 +42,125 @@ from config import DOCUMENT_TEMPLATES
 from modules.output_manager import final_latex_sanitization
 from modules.template_enhancer import TemplateEnhancer
 
+# LangGraph integration
+try:
+    from langgraph_workflow import DocumentProcessingWorkflow
+    from langgraph_state import create_initial_state, ProcessingStage
+    LANGGRAPH_AVAILABLE = True
+except ImportError as e:
+    logging.warning(f"LangGraph components not available: {e}. Falling back to legacy mode.")
+    LANGGRAPH_AVAILABLE = False
+
 # --- Configure Basic Logging ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 log = logging.getLogger(__name__)
 
 def main(source, source2=None, combine_strategy="smart", output_format="latex", 
          template="bitcoin_paper_hierarchical", polishing=True, run_analysis=False, 
-         stage="all", remediate_orphans=False):
+         stage="all", remediate_orphans=False, use_langgraph=True):
     """
     Main function to orchestrate the entire document processing pipeline.
+    
+    Args:
+        source: Path to the primary source document
+        source2: Optional path to second document for augmentation
+        combine_strategy: Strategy for combining documents ("smart" or "robust")
+        output_format: Output format ("latex" or "markdown")
+        template: Document template name from config
+        polishing: Whether to apply final polishing pass
+        run_analysis: Whether to run post-processing analysis
+        stage: Pipeline stage to run ("chunk", "map", or "all")
+        remediate_orphans: Whether to use LLM for orphan remediation
+        use_langgraph: Whether to use LangGraph orchestration (falls back to legacy if unavailable)
+    
+    Returns:
+        str: Session path if successful, None if failed
     """
     log.info("--- Starting Document Processing Engine ---")
+    
+    # Determine processing mode
+    if use_langgraph and LANGGRAPH_AVAILABLE:
+        log.info("Using LangGraph orchestration mode")
+        # Create config for LangGraph pipeline
+        config = {
+            'enable_knowledge_graph': True,
+            'enable_semantic_mapping': True,
+            'output_format': output_format,
+            'template': template,
+            'polishing': polishing,
+            'run_analysis': run_analysis,
+            'stage': stage,
+            'remediate_orphans': remediate_orphans
+        }
+        return asyncio.run(_run_langgraph_pipeline(args.source, config))
+    else:
+        if use_langgraph and not LANGGRAPH_AVAILABLE:
+            log.warning("LangGraph requested but not available. Falling back to legacy mode.")
+        else:
+            log.info("Using legacy orchestration mode")
+        return _run_legacy_pipeline(source, source2, combine_strategy, output_format, 
+                                  template, polishing, run_analysis, stage, remediate_orphans)
+
+
+async def _run_langgraph_pipeline(source, source2=None, combine_strategy="smart", output_format="latex", 
+                           template="bitcoin_paper_hierarchical", polishing=True, run_analysis=False, 
+                           stage="all", remediate_orphans=False):
+    """
+    Run the document processing pipeline using LangGraph orchestration.
+    """
+    try:
+        # Initialize LangGraph workflow
+        orchestrator = DocumentProcessingWorkflow({})
+        
+        # Create initial state
+        config = {
+            "source2_path": source2,
+            "combine_strategy": combine_strategy,
+            "output_format": output_format,
+            "template_name": template,
+            "polishing_enabled": polishing,
+            "analysis_enabled": run_analysis,
+            "target_stage": stage,
+            "remediate_orphans": remediate_orphans
+        }
+        
+        import uuid
+        session_id = str(uuid.uuid4())
+        initial_state = create_initial_state(
+            session_id=session_id,
+            document_path=source,
+            config=config
+        )
+        
+        log.info(f"Initialized LangGraph state for session: {initial_state.session_info.session_id}")
+        
+        # Execute workflow
+        final_state = await orchestrator.process_document(source, initial_state.session_info.session_id)
+        
+        if final_state.current_stage == ProcessingStage.COMPLETED:
+            log.info("--- LangGraph Pipeline Completed Successfully! ---")
+            log.info(f"-> Final Document: {final_state.outputs[0].file_path if final_state.outputs else 'No output generated'}")
+            return final_state.session_info.session_id
+        else:
+            log.error(f"Pipeline failed at stage: {final_state.current_stage}")
+            if final_state.errors:
+                for error in final_state.errors:
+                    log.error(f"Error: {error.message}")
+            return None
+            
+    except Exception as e:
+        log.error(f"LangGraph pipeline failed: {e}", exc_info=True)
+        log.info("Falling back to legacy pipeline...")
+        return _run_legacy_pipeline(source, source2, combine_strategy, output_format, 
+                                  template, polishing, run_analysis, stage, remediate_orphans)
+
+
+def _run_legacy_pipeline(source, source2=None, combine_strategy="smart", output_format="latex", 
+                        template="bitcoin_paper_hierarchical", polishing=True, run_analysis=False, 
+                        stage="all", remediate_orphans=False):
+    """
+    Run the original document processing pipeline (legacy mode).
+    """
     log.info("Initializing core modules for session...")
     output_manager = OutputManager()
     log_entries = [f"Session started: {output_manager.session_id}"]
@@ -216,13 +331,15 @@ if __name__ == "__main__":
     parser.add_argument("--stage", default="all", choices=["chunk", "map", "all"], help="Run only a specific stage of the pipeline for debugging.")
     parser.add_argument("--remediate-orphans", action="store_true", help="Enable the LLM to dynamically create new sections for orphaned content.")
     parser.add_argument("--analysis", action="store_true", help="Run a full post-processing analysis after the main run completes.")
+    parser.add_argument("--no-langgraph", dest="use_langgraph", action="store_false", help="Disable LangGraph orchestration and use legacy mode.")
     
     args = parser.parse_args()
     
     session_path = main(source=args.source, source2=args.source2, combine_strategy=args.combine_strategy,
                         output_format=args.output_format, template=args.template, 
                         polishing=args.polishing, run_analysis=args.analysis, 
-                        stage=args.stage, remediate_orphans=args.remediate_orphans)
+                        stage=args.stage, remediate_orphans=args.remediate_orphans,
+                        use_langgraph=args.use_langgraph)
     
     if args.analysis and session_path:
         log.info("--- Handing off to Post-Processing Analysis Suite ---")

@@ -8,6 +8,41 @@
 #   API configuration sections and comment out the corresponding local configurations
 # - Make sure to set the required API keys as environment variables
 
+class Config:
+    """Configuration class providing access to all configuration dictionaries"""
+    
+    def __init__(self):
+        # Initialize with default configurations
+        pass
+    
+    @classmethod
+    def get_llm_config(cls):
+        return LLM_CONFIG
+    
+    @classmethod
+    def get_embedding_config(cls):
+        return EMBEDDING_CONFIG
+    
+    @classmethod
+    def get_semantic_mapping_config(cls):
+        return SEMANTIC_MAPPING_CONFIG
+    
+    @classmethod
+    def get_chunking_config(cls):
+        return ADAPTIVE_CHUNKING_CONFIG
+    
+    @classmethod
+    def get_all_configs(cls):
+        """Return a dictionary of all available configurations"""
+        return {
+            'llm': LLM_CONFIG,
+            'embedding': EMBEDDING_CONFIG,
+            'semantic_mapping': SEMANTIC_MAPPING_CONFIG,
+            'chunking': ADAPTIVE_CHUNKING_CONFIG,
+            'local_model': LOCAL_MODEL_CONFIG,
+            'huggingface': HUGGINGFACE_CONFIG
+        }
+
 # --- NEW: Configuration for LangChain-based Chunkers ---
 LANGCHAIN_CHUNK_CONFIG = {
     'md_chunk_size': 800,
@@ -179,6 +214,21 @@ CHUNKING_EMBEDDING = {
     "adaptive_sizing": True,
     "smart_overlap": True,
     "local_model": "sentence-transformers/all-mpnet-base-v2",
+    "device": "auto"
+}
+
+# --- NEW: Adaptive chunking configuration ---
+ADAPTIVE_CHUNKING_CONFIG = {
+    "enable": True,
+    "min_chunk_size": 100,
+    "max_chunk_size": 1000,
+    "target_chunk_size": 500,
+    "overlap_ratio": 0.1,
+    "cohesion_threshold": 0.7,
+    "adaptive_threshold": 0.8,
+    "boundary_detection": "semantic",
+    "use_embeddings": True,
+    "embedding_model": "sentence-transformers/all-mpnet-base-v2",
     "device": "auto"
 }
 

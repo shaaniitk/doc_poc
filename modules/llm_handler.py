@@ -34,6 +34,27 @@ except Exception as _faiss_err:  # Broad by design: support environments without
 
 log = logging.getLogger(__name__)
 
+class LLMHandler:
+    """Handler for LLM operations with error handling and retries"""
+    def __init__(self, llm_client: UnifiedLLMClient):
+        self.llm_client = llm_client
+        self.langchain_llm = LangChainLLM(client=llm_client)
+    
+    @robust_llm_call(max_retries=3)
+    def process_content(self, content: str, prompt: str) -> str:
+        """Process content using LLM with robust error handling"""
+        messages = [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": content}
+        ]
+        return self.llm_client.call_llm(messages)
+    
+    @robust_llm_call(max_retries=2)
+    def generate_summary(self, content: str) -> str:
+        """Generate a summary of the given content"""
+        prompt = "Please provide a concise summary of the following content:"
+        return self.process_content(content, prompt)
+
 # Simple fallback memory to avoid hard dependency on FAISS
 class SimpleMemory:
     def __init__(self, max_items: int = 10):

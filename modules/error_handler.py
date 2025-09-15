@@ -207,6 +207,40 @@ def robust_embedding_call(max_retries: int = 3, backoff_delay: float = 1.0,
     return decorator
 
 
+class ErrorHandler:
+    """Main error handler class for the document processing pipeline"""
+    
+    def __init__(self, config: dict = None):
+        self.config = config or {}
+        self.circuit_breaker = CircuitBreaker()
+        self.validator = ResponseValidator()
+    
+    def handle_processing_error(self, error: Exception, context: str = "") -> None:
+        """Handle processing errors with appropriate logging and recovery"""
+        if isinstance(error, LLMError):
+            self.circuit_breaker.record_failure()
+            raise error  # LLM errors should halt processing
+        elif isinstance(error, (EmbeddingError, ChunkingError)):
+            # Log but allow processing to continue with fallbacks
+            print(f"Warning: {context} - {str(error)}")
+        else:
+            # Unknown error - log and re-raise
+            print(f"Error in {context}: {str(error)}")
+            raise error
+    
+    def validate_response(self, response: str, min_length: int = 10) -> str:
+        """Validate LLM response using the response validator"""
+        return self.validator.validate_llm_response(response, min_length)
+    
+    def check_circuit_breaker(self) -> bool:
+        """Check if circuit breaker allows requests"""
+        return self.circuit_breaker.allow_request()
+    
+    def record_success(self) -> None:
+        """Record successful operation"""
+        self.circuit_breaker.record_success()
+
+
 class EmbeddingRateLimiter:
     """Rate limiter for embedding API calls to prevent hitting provider limits"""
     

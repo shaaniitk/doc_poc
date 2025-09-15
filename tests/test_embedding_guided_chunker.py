@@ -4,6 +4,10 @@ from unittest.mock import Mock, patch, MagicMock
 from modules.chunker import EmbeddingGuidedChunker
 from modules.error_handler import EmbeddingError, EmbeddingAPIError
 from config import CHUNKING_EMBEDDING
+from langgraph_state import (
+    PipelineState, ChunkInfo, ProcessingStage, ErrorInfo, create_initial_state
+)
+from langgraph_config import ProcessingConfiguration
 
 
 class TestEmbeddingGuidedChunker:
@@ -107,6 +111,46 @@ class TestEmbeddingGuidedChunker:
         assert all('metadata' in chunk for chunk in chunks)
         mock_embedding_client.get_embeddings.assert_called()
     
+    def test_chunk_with_langgraph_state_integration(self, chunker, mock_embedding_client):
+        """Test chunking with LangGraph state integration."""
+        # Create initial pipeline state
+        config = ProcessingConfiguration(
+            chunking_enabled=True,
+            max_chunk_size=512,
+            chunk_overlap=50
+        )
+        state = create_initial_state(
+            document_path="test_doc.txt",
+            processing_config=config
+        )
+        
+        text = "This is sentence one. This is sentence two. This is a different topic."
+        chunks = chunker.chunk_with_embeddings(text)
+        
+        # Convert chunks to ChunkInfo objects
+        chunk_infos = []
+        for i, chunk in enumerate(chunks):
+            chunk_info = ChunkInfo(
+                chunk_id=f"chunk_{i}",
+                content=chunk['content'],
+                token_count=chunk['metadata'].get('token_count', 0),
+                cohesion_score=chunk['metadata'].get('cohesion_score', 0.0),
+                start_position=chunk['metadata'].get('start_position', 0),
+                end_position=chunk['metadata'].get('end_position', len(chunk['content'])),
+                overlap_with_previous=chunk['metadata'].get('overlap_tokens', 0),
+                embedding_vector=chunk['metadata'].get('embedding', [])
+            )
+            chunk_infos.append(chunk_info)
+        
+        # Update state with chunks
+        state.chunks = chunk_infos
+        state.current_stage = ProcessingStage.CHUNKING_COMPLETE
+        
+        # Verify state integration
+        assert len(state.chunks) == len(chunks)
+        assert state.current_stage == ProcessingStage.CHUNKING_COMPLETE
+        assert all(isinstance(chunk, ChunkInfo) for chunk in state.chunks)
+    
     def test_chunk_with_embeddings_fallback(self, chunker, mock_embedding_client):
         """Test chunking fallback when embeddings fail."""
         text = "This is a test text for fallback chunking. It has multiple sentences to trigger embedding calls."
@@ -120,6 +164,45 @@ class TestEmbeddingGuidedChunker:
         assert len(chunks) > 0
         assert chunks[0]['metadata']['method'] == 'fallback'
         assert chunks[0]['metadata']['chunking_method'] == 'fallback_token_based'
+    
+    def test_chunking_error_handling_with_state(self, chunker, mock_embedding_client):
+        """Test error handling during chunking with state tracking."""
+        # Create initial state
+        config = ProcessingConfiguration(chunking_enabled=True)
+        state = create_initial_state(
+            document_path="test_doc.txt",
+            processing_config=config
+        )
+        
+        # Mock embedding failure
+        chunker.embedding_client.get_embeddings.side_effect = EmbeddingAPIError("API Error")
+        
+        text = "Test text for error handling."
+        
+        try:
+            chunks = chunker.chunk_with_embeddings(text)
+            
+            # Create error info for the failure
+            error_info = ErrorInfo(
+                error_type="EmbeddingAPIError",
+                message="API Error",
+                stage=ProcessingStage.CHUNKING,
+                recoverable=True,
+                context={"fallback_used": True, "method": "fallback_token_based"}
+            )
+            
+            # Add error to state
+            state.errors.append(error_info)
+            state.current_stage = ProcessingStage.CHUNKING_COMPLETE  # Completed with fallback
+            
+            # Verify error tracking
+            assert len(state.errors) == 1
+            assert state.errors[0].error_type == "EmbeddingAPIError"
+            assert state.errors[0].recoverable is True
+            assert len(chunks) > 0  # Should still have chunks from fallback
+            
+        except Exception as e:
+            pytest.fail(f"Chunking should handle errors gracefully: {e}")
     
     def test_chunk_with_embeddings_empty_text(self, chunker):
         """Test chunking with empty text."""
@@ -244,3 +327,78 @@ class TestEmbeddingGuidedChunker:
             assert 'cohesion_score' in metadata
             assert isinstance(metadata['token_count'], int)
             assert isinstance(metadata['cohesion_score'], (int, float))
+    
+    def test_chunk_info_creation_from_chunks(self, chunker):
+        """Test creating ChunkInfo objects from chunker output."""
+        text = "First sentence. Second sentence. Third sentence."
+        chunks = chunker.chunk_with_embeddings(text)
+        
+        # Convert to ChunkInfo objects
+        chunk_infos = []
+        for i, chunk in enumerate(chunks):
+            chunk_info = ChunkInfo(
+                chunk_id=f"chunk_{i}",
+                content=chunk['content'],
+                token_count=chunk['metadata'].get('token_count', 0),
+                cohesion_score=chunk['metadata'].get('cohesion_score', 0.0),
+                start_position=0,
+                end_position=len(chunk['content']),
+                overlap_with_previous=0,
+                embedding_vector=[]
+            )
+            chunk_infos.append(chunk_info)
+        
+        # Verify ChunkInfo objects
+        assert len(chunk_infos) == len(chunks)
+        for chunk_info in chunk_infos:
+            assert isinstance(chunk_info, ChunkInfo)
+            assert chunk_info.chunk_id.startswith("chunk_")
+            assert len(chunk_info.content) > 0
+            assert chunk_info.token_count >= 0
+            assert 0.0 <= chunk_info.cohesion_score <= 1.0
+    
+    def test_pipeline_state_chunking_workflow(self, chunker):
+        """Test complete chunking workflow with pipeline state."""
+        # Create initial state
+        config = ProcessingConfiguration(
+            chunking_enabled=True,
+            max_chunk_size=256,
+            chunk_overlap=25
+        )
+        state = create_initial_state(
+            document_path="workflow_test.txt",
+            processing_config=config
+        )
+        
+        # Simulate chunking workflow
+        text = "This is the first paragraph. It contains multiple sentences. This is the second paragraph. It also has content."
+        
+        # Update state to chunking stage
+        state.current_stage = ProcessingStage.CHUNKING
+        
+        # Perform chunking
+        chunks = chunker.chunk_with_embeddings(text)
+        
+        # Convert to ChunkInfo and update state
+        chunk_infos = []
+        for i, chunk in enumerate(chunks):
+            chunk_info = ChunkInfo(
+                chunk_id=f"chunk_{i}",
+                content=chunk['content'],
+                token_count=chunk['metadata'].get('token_count', 0),
+                cohesion_score=chunk['metadata'].get('cohesion_score', 0.0),
+                start_position=i * 100,  # Simulated positions
+                end_position=(i + 1) * 100,
+                overlap_with_previous=config.chunk_overlap if i > 0 else 0,
+                embedding_vector=chunk['metadata'].get('embedding', [])
+            )
+            chunk_infos.append(chunk_info)
+        
+        state.chunks = chunk_infos
+        state.current_stage = ProcessingStage.CHUNKING_COMPLETE
+        
+        # Verify workflow state
+        assert state.current_stage == ProcessingStage.CHUNKING_COMPLETE
+        assert len(state.chunks) > 0
+        assert all(chunk.token_count <= config.max_chunk_size for chunk in state.chunks)
+        assert state.processing_config.chunking_enabled is True

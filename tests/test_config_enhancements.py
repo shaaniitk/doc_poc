@@ -1,6 +1,10 @@
 import pytest
 from unittest.mock import patch, Mock
 import config
+from langgraph_config import (
+    ProcessingConfiguration, ConfigurationManager, ConfigurationLevel
+)
+from langgraph_state import PipelineState, create_initial_state
 
 
 class TestChunkingEmbeddingConfig:
@@ -167,6 +171,55 @@ class TestConfigurationIntegration:
         assert chunking_embedding['enable'] is True
         assert mistral_refinement['enable'] is True
     
+    def test_langgraph_config_integration(self):
+        """Test integration with LangGraph ProcessingConfiguration."""
+        # Create ProcessingConfiguration from existing config
+        chunking_embedding = getattr(config, 'CHUNKING_EMBEDDING', {})
+        mistral_refinement = getattr(config, 'MISTRAL_REFINEMENT', {})
+        
+        processing_config = ProcessingConfiguration(
+            chunking_enabled=chunking_embedding.get('enable', True),
+            embedding_enabled=True,
+            llm_processing_enabled=mistral_refinement.get('enable', True),
+            analytics_enabled=True,
+            max_chunk_size=chunking_embedding.get('max_tokens_per_chunk', 512),
+            chunk_overlap=chunking_embedding.get('overlap_tokens', 50),
+            confidence_threshold=mistral_refinement.get('confidence_threshold', 0.7),
+            temperature=mistral_refinement.get('temperature', 0.3),
+            max_tokens=mistral_refinement.get('max_tokens', 1000)
+        )
+        
+        assert processing_config.chunking_enabled == chunking_embedding['enable']
+        assert processing_config.llm_processing_enabled == mistral_refinement['enable']
+        assert processing_config.max_chunk_size == chunking_embedding['max_tokens_per_chunk']
+    
+    def test_configuration_manager_integration(self):
+        """Test ConfigurationManager with existing configurations."""
+        config_manager = ConfigurationManager()
+        
+        # Test merging configurations
+        chunking_embedding = getattr(config, 'CHUNKING_EMBEDDING', {})
+        mistral_refinement = getattr(config, 'MISTRAL_REFINEMENT', {})
+        
+        base_config = ProcessingConfiguration(
+            chunking_enabled=chunking_embedding.get('enable', True),
+            max_chunk_size=chunking_embedding.get('max_tokens_per_chunk', 512),
+            confidence_threshold=mistral_refinement.get('confidence_threshold', 0.7)
+        )
+        
+        override_config = ProcessingConfiguration(
+            temperature=0.5,  # Override temperature
+            max_tokens=2000   # Override max tokens
+        )
+        
+        merged = config_manager.merge_configurations(base_config, override_config)
+        
+        # Verify merge results
+        assert merged.chunking_enabled == base_config.chunking_enabled
+        assert merged.temperature == override_config.temperature
+        assert merged.max_tokens == override_config.max_tokens
+        assert merged.confidence_threshold == base_config.confidence_threshold
+    
     def test_config_compatibility(self):
         """Test that configurations are compatible with each other."""
         # Both configs should be able to be enabled simultaneously
@@ -230,6 +283,30 @@ class TestConfigurationIntegration:
             assert True
         except ImportError as e:
             pytest.fail(f"DocumentAnalyzer cannot import MISTRAL_REFINEMENT: {e}")
+    
+    def test_pipeline_state_with_config(self):
+        """Test PipelineState integration with configuration."""
+        # Create configuration from existing config values
+        chunking_embedding = getattr(config, 'CHUNKING_EMBEDDING', {})
+        mistral_refinement = getattr(config, 'MISTRAL_REFINEMENT', {})
+        
+        processing_config = ProcessingConfiguration(
+            chunking_enabled=chunking_embedding.get('enable', True),
+            llm_processing_enabled=mistral_refinement.get('enable', True),
+            max_chunk_size=chunking_embedding.get('max_tokens_per_chunk', 512),
+            confidence_threshold=mistral_refinement.get('confidence_threshold', 0.7)
+        )
+        
+        # Create initial state with configuration
+        state = create_initial_state(
+            document_path="test_doc.txt",
+            processing_config=processing_config
+        )
+        
+        # Verify state includes configuration
+        assert state.processing_config == processing_config
+        assert state.processing_config.chunking_enabled == chunking_embedding['enable']
+        assert state.processing_config.llm_processing_enabled == mistral_refinement['enable']
 
 
 class TestConfigurationUsageScenarios:
