@@ -1,0 +1,17 @@
+DEBUG: Wrapper for parse_document
+DEBUG: Input state keys: ['document_id', 'document_path', 'original_content', 'metadata', 'chunks', 'processed_sections', 'template_applied', 'validation_results', 'combined_content', 'combination_metadata', 'formatted_content', 'formatting_metadata', 'knowledge_graph', 'llm_results', 'final_output', 'errors', 'processing_time', 'llm_handler', 'target_format', 'formatting_options']
+DEBUG: document_path in state: True
+DEBUG: document_path value: sample_test.txt
+DEBUG: WorkflowState type: <class 'dict'>
+DEBUG: WorkflowState has document_path: False
+DEBUG: Wrapper for parse_document
+DEBUG: Input state keys: ['document_id', 'document_path', 'original_content', 'metadata', 'chunks', 'processed_sections', 'template_applied', 'validation_results', 'combined_content', 'combination_metadata', 'formatted_content', 'formatting_metadata', 'knowledge_graph', 'llm_results', 'final_output', 'errors', 'processing_time', 'llm_handler', 'target_format', 'formatting_options']
+DEBUG: document_path in state: True
+DEBUG: document_path value: sample_test.txt
+DEBUG: Wrapper for parse_document
+DEBUG: Input state keys: ['document_id', 'document_path', 'original_content', 'metadata', 'chunks', 'processed_sections', 'template_applied', 'validation_results', 'combined_content', 'combination_metadata', 'formatted_content', 'formatting_metadata', 'knowledge_graph', 'llm_results', 'final_output', 'errors', 'processing_time', 'llm_handler', 'target_format', 'formatting_options']
+DEBUG: document_path in state: True
+DEBUG: document_path value: sample_test.txt
+DEBUG: WorkflowState type: <class 'core.models.WorkflowState'>
+DEBUG: WorkflowState has document_path: True
+DEBUG: WorkflowState document_path value: sample_test.txt

@@ -43,18 +43,9 @@ except ImportError:
     logging.warning("Anthropic not available. Install anthropic for Claude support.")
 
 from .chunking_processor import DocumentChunk, ChunkingResult
+from .config import LLMProvider
 
 logger = logging.getLogger(__name__)
-
-
-class LLMProvider(Enum):
-    """Supported LLM providers."""
-    OPENAI = auto()
-    ANTHROPIC = auto()
-    AZURE_OPENAI = auto()
-    HUGGING_FACE = auto()
-    OLLAMA = auto()
-    CUSTOM = auto()
 
 
 class ProcessingMode(Enum):
@@ -180,14 +171,18 @@ class LLMHandler:
                     timeout=self.config.timeout
                 )
                 logger.debug("OpenAI client initialized")
-            
-            if self.config.provider == LLMProvider.ANTHROPIC and HAS_ANTHROPIC:
+            elif self.config.provider == LLMProvider.ANTHROPIC and HAS_ANTHROPIC:
                 self._clients[LLMProvider.ANTHROPIC] = anthropic.AsyncAnthropic(
                     api_key=self.config.api_key
                 )
                 logger.debug("Anthropic client initialized")
-            
-            # Add other providers as needed
+            elif self.config.provider == LLMProvider.MISTRAL:
+                # For MISTRAL, we'll use the handler itself as the client
+                # since MISTRAL integration is handled through the handler
+                self._clients[LLMProvider.MISTRAL] = self
+                logger.debug("MISTRAL client initialized")
+            else:
+                logger.warning(f"No client implementation for provider: {self.config.provider}")
             
         except Exception as e:
             logger.error(f"Failed to initialize LLM clients: {e}")

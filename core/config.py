@@ -26,6 +26,7 @@ class LLMProvider(Enum):
     AZURE_OPENAI = "azure_openai"
     HUGGINGFACE = "huggingface"
     LOCAL = "local"
+    MISTRAL = "mistral"
 
 
 class ProcessingMode(Enum):

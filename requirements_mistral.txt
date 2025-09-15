@@ -1,0 +1,4 @@
+# Minimal requirements for Mistral API integration testing
+aiohttp>=3.8.0
+# Note: The core application may have additional dependencies
+# This file only covers what's needed for Mistral API testing

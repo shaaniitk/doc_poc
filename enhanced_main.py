@@ -13,8 +13,9 @@ import argparse
 import time
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Union
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
+from uuid import uuid4
 import json
 import traceback
 from contextlib import asynccontextmanager
@@ -25,9 +26,16 @@ import os
 from core.state_manager import CentralizedStateManager, ProcessingStage
 from core.langgraph_orchestrator import LangGraphOrchestrator, NodeConfig
 from langgraph_state import PipelineState
+from core.workflow_node_wrappers import (
+    TemplateProcessorWorkflowNode,
+    ValidationWorkflowNode,
+    CombinationWorkflowNode,
+    OutputFormatterWorkflowNode
+)
 from core.document_parser import DocumentParser
 from core.chunking_processor import ChunkingProcessor, ChunkingConfig, ChunkingStrategy
 from core.llm_handler import LLMHandler, LLMConfig, ProcessingMode
+from core.config import LLMProvider
 from core.knowledge_graph_processor import KnowledgeGraphProcessor, ExtractionConfig
 from core.output_generator import OutputGenerator, OutputConfig, OutputFormat, TemplateType
 
@@ -217,7 +225,7 @@ class EnhancedDocumentProcessor:
             
             # Initialize state manager
             self.state_manager = CentralizedStateManager()
-            await self.state_manager.initialize_async()
+            # State manager uses synchronous initialization
             
             # Initialize document parser
             self.document_parser = DocumentParser(
@@ -229,17 +237,24 @@ class EnhancedDocumentProcessor:
             # Initialize chunking processor
             chunking_config = ChunkingConfig(
                 strategy=self.config.chunking_strategy,
-                chunk_size=self.config.chunk_size,
+                max_chunk_size=self.config.chunk_size,
                 overlap_size=self.config.chunk_overlap,
-                min_chunk_size=100,
-                enable_quality_scoring=self.config.enable_quality_gates,
-                min_quality_score=self.config.min_chunk_quality
+                min_chunk_size=100
             )
             self.chunking_processor = ChunkingProcessor(chunking_config)
             
             # Initialize LLM handler
+            # Convert string provider to enum
+            provider_enum = LLMProvider.OPENAI  # default
+            if self.config.llm_provider.lower() == "mistral":
+                provider_enum = LLMProvider.MISTRAL
+            elif self.config.llm_provider.lower() == "anthropic":
+                provider_enum = LLMProvider.ANTHROPIC
+            elif self.config.llm_provider.lower() == "azure_openai":
+                provider_enum = LLMProvider.AZURE_OPENAI
+            
             llm_config = LLMConfig(
-                provider=self.config.llm_provider,
+                provider=provider_enum,
                 model=self.config.llm_model,
                 temperature=self.config.llm_temperature,
                 max_tokens=self.config.llm_max_tokens,
@@ -249,7 +264,8 @@ class EnhancedDocumentProcessor:
                 retry_delay=self.config.retry_delay
             )
             self.llm_handler = LLMHandler(llm_config)
-            await self.llm_handler.initialize_async()
+            # LLM handler is initialized synchronously in __init__
+            # No async initialization needed
             
             # Initialize knowledge graph processor
             if self.config.enable_knowledge_graph:
@@ -259,7 +275,8 @@ class EnhancedDocumentProcessor:
                     min_confidence=0.5
                 )
                 self.kg_processor = KnowledgeGraphProcessor(kg_config)
-                await self.kg_processor.initialize_async()
+                # Knowledge graph processor is initialized synchronously in __init__
+                # No async initialization needed
             
             # Initialize output generator
             output_config = OutputConfig(
@@ -288,16 +305,12 @@ class EnhancedDocumentProcessor:
             )
             
             self.orchestrator = LangGraphOrchestrator(
-                state_manager=self.state_manager,
-                document_parser=self.document_parser,
-                chunking_processor=self.chunking_processor,
-                llm_handler=self.llm_handler,
-                kg_processor=self.kg_processor,
-                output_generator=self.output_generator,
-                config=workflow_config
+                config=asdict(workflow_config),
+                llm_handler=self.llm_handler
             )
             
-            await self.orchestrator.initialize_async()
+            # Orchestrator is initialized synchronously in __init__
+            # No async initialization needed
             
             logger.info("All components initialized successfully")
         
@@ -315,19 +328,27 @@ class EnhancedDocumentProcessor:
                 raise KeyboardInterrupt("Processing cancelled by user")
             
             # Initialize processing state
+            from langgraph_state import SessionInfo
+            
+            session_info = SessionInfo(
+                session_id=str(uuid4()),
+                user_id="system",
+                start_time=datetime.now()
+            )
+            
             initial_state = PipelineState(
-                stage=ProcessingStage.PARSING,
-                source_path=str(self.config.source_path),
-                output_path=str(self.config.output_path) if self.config.output_path else None,
-                config=self.config.__dict__
+                session_info=session_info,
+                current_stage=ProcessingStage.DOCUMENT_PARSING,
+                raw_content="",
+                config=asdict(self.config)
             )
             
             # Start orchestrated processing
             start_time = time.time()
             
-            final_state = await self.orchestrator.process_document_async(
-                initial_state,
-                progress_callback=self._progress_callback
+            final_state = await self.orchestrator.process_document(
+                str(self.config.source_path),
+                config=None
             )
             
             # Update metrics
@@ -380,7 +401,7 @@ class EnhancedDocumentProcessor:
     async def _progress_callback(self, state: PipelineState) -> None:
         """Handle progress updates from orchestrator."""
         # Update metrics based on current stage
-        if state.stage == ProcessingStage.PARSING:
+        if state.stage == ProcessingStage.DOCUMENT_PARSING:
             logger.info("Document parsing in progress...")
         
         elif state.stage == ProcessingStage.CHUNKING:
@@ -394,7 +415,7 @@ class EnhancedDocumentProcessor:
                 self.metrics.processed_chunks = processed
                 self.metrics.failed_chunks = len(state.llm_results.results) - processed
         
-        elif state.stage == ProcessingStage.KNOWLEDGE_GRAPH:
+        elif state.stage == ProcessingStage.KNOWLEDGE_GRAPH_BUILDING:
             logger.info("Knowledge graph processing in progress...")
         
         elif state.stage == ProcessingStage.OUTPUT_GENERATION:
@@ -418,17 +439,20 @@ class EnhancedDocumentProcessor:
         try:
             logger.info("Cleaning up resources...")
             
-            if self.orchestrator:
-                await self.orchestrator.cleanup_async()
+            # Orchestrator has no explicit cleanup needed
+            # Resources are managed automatically
             
             if self.llm_handler:
-                await self.llm_handler.cleanup_async()
+                # LLM handler cleanup (clear cache)
+                self.llm_handler.clear_cache()
             
             if self.kg_processor:
-                await self.kg_processor.cleanup_async()
+                # Knowledge graph processor has no explicit cleanup needed
+                # Resources are managed automatically
+                pass
             
             if self.state_manager:
-                await self.state_manager.cleanup_async()
+                self.state_manager.cleanup()
             
             logger.info("Cleanup completed")
         

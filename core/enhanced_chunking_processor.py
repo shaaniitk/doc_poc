@@ -26,6 +26,10 @@ from .chunking_processor import (
 from .document_parser import ParsedDocument
 from .langgraph_orchestrator import BaseWorkflowNode, NodeConfig, WorkflowState, NodeResult
 from .state_manager import CentralizedStateManager, ProcessingStage, ErrorSeverity
+from .template_processor_node import TemplateProcessorNode
+from .config import CHUNKING_STRATEGIES, QUALITY_THRESHOLDS
+from .models import DocumentChunk, ChunkingResult, WorkflowState
+from .semantic_mapper import SemanticMapper, BasicSemanticMapper
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +95,7 @@ class StrategySelectionNode(BaseWorkflowNode):
         return state
     
     async def _analyze_document_characteristics(self, content: str) -> Dict[str, Any]:
+        import re
         """Analyze document to determine optimal chunking approach."""
         analysis = {
             "content_length": len(content),
@@ -413,11 +418,14 @@ class EnhancedChunkingProcessor:
     """Enhanced chunking processor with LangGraph workflow integration."""
     
     def __init__(self, config: Optional[EnhancedChunkingConfig] = None, 
-                 state_manager: Optional[CentralizedStateManager] = None):
+                 state_manager: Optional[CentralizedStateManager] = None,
+                 llm=None, semantic_mapper=None):
         self.config = config or EnhancedChunkingConfig()
         self.state_manager = state_manager or CentralizedStateManager()
         self.workflow_graph = None
         self.memory_saver = MemorySaver()
+        self.llm = llm
+        self.semantic_mapper = semantic_mapper or BasicSemanticMapper()
         
         if self.config.enable_workflow:
             self._build_workflow_graph()
@@ -425,7 +433,7 @@ class EnhancedChunkingProcessor:
         logger.info(f"EnhancedChunkingProcessor initialized with workflow: {self.config.enable_workflow}")
     
     def _build_workflow_graph(self) -> None:
-        """Build the LangGraph workflow for enhanced chunking."""
+        """Build the LangGraph workflow for enhanced chunking with template processing."""
         workflow = StateGraph(WorkflowState)
         
         # Create workflow nodes
@@ -444,15 +452,31 @@ class EnhancedChunkingProcessor:
             self.state_manager
         )
         
+        # Create template processor node if components are available
+        template_processor = None
+        if self.llm and self.semantic_mapper:
+            template_processor = TemplateProcessorNode(
+                llm=self.llm,
+                semantic_mapper=self.semantic_mapper
+            )
+        
         # Add nodes to workflow
         workflow.add_node("strategy_selector", strategy_node.execute)
         workflow.add_node("content_analyzer", content_node.execute)
         workflow.add_node("adaptive_chunker", chunker_node.execute)
         
+        if template_processor:
+            workflow.add_node("template_processor", template_processor.process_document_with_template)
+        
         # Define workflow edges
         workflow.add_edge("strategy_selector", "content_analyzer")
         workflow.add_edge("content_analyzer", "adaptive_chunker")
-        workflow.add_edge("adaptive_chunker", END)
+        
+        if template_processor:
+            workflow.add_edge("adaptive_chunker", "template_processor")
+            workflow.add_edge("template_processor", END)
+        else:
+            workflow.add_edge("adaptive_chunker", END)
         
         # Set entry point
         workflow.set_entry_point("strategy_selector")
@@ -460,7 +484,7 @@ class EnhancedChunkingProcessor:
         # Compile workflow
         self.workflow_graph = workflow.compile(checkpointer=self.memory_saver)
         
-        logger.info("LangGraph workflow compiled successfully")
+        logger.info("LangGraph workflow with template processing compiled successfully")
     
     async def process_document_async(self, document: ParsedDocument, 
                                    config: Optional[EnhancedChunkingConfig] = None) -> ChunkingResult:
@@ -562,6 +586,8 @@ class EnhancedChunkingProcessor:
 # Factory functions
 def create_enhanced_chunking_processor(enable_workflow: bool = True,
                                      enable_adaptive: bool = True,
+                                     llm=None,
+                                     semantic_mapper=None,
                                      **kwargs) -> EnhancedChunkingProcessor:
     """Create enhanced chunking processor with specified configuration."""
     config = EnhancedChunkingConfig(
@@ -569,7 +595,9 @@ def create_enhanced_chunking_processor(enable_workflow: bool = True,
         enable_adaptive_strategy=enable_adaptive,
         **kwargs
     )
-    return EnhancedChunkingProcessor(config)
+    if semantic_mapper is None:
+        semantic_mapper = BasicSemanticMapper()
+    return EnhancedChunkingProcessor(config, llm=llm, semantic_mapper=semantic_mapper)
 
 
 async def enhanced_chunk_document_async(document: ParsedDocument,
