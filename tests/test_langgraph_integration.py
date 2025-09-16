@@ -1,3 +1,6 @@
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 """Integration tests for LangGraph workflow orchestration"""
 import pytest
 import unittest
@@ -7,6 +10,7 @@ import os
 import json
 from datetime import datetime
 from typing import Dict, List, Any
+from core.langgraph_orchestrator import LangGraphOrchestrator
 
 # Import LangGraph components
 from langgraph_state import (
@@ -24,7 +28,7 @@ class TestLangGraphWorkflowIntegration(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
-        self.orchestrator = LangGraphWorkflowOrchestrator()
+        self.orchestrator = LangGraphOrchestrator()
         self.test_file_path = '/test/sample_document.pdf'
         self.session_id = 'test-integration-session'
         
@@ -344,7 +348,7 @@ class TestLangGraphWorkflowIntegration(unittest.TestCase):
         """Test workflow fallback to linear processing"""
         # Test when LangGraph is not available
         with patch('langgraph_workflow.LANGGRAPH_AVAILABLE', False):
-            orchestrator = LangGraphWorkflowOrchestrator()
+            orchestrator = LangGraphOrchestrator()
             
             # Create initial state
             initial_state = create_initial_state(
@@ -525,7 +529,7 @@ class TestLangGraphWorkflowEdgeCases(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
-        self.orchestrator = LangGraphWorkflowOrchestrator()
+        self.orchestrator = LangGraphOrchestrator()
     
     def test_empty_document_handling(self):
         """Test workflow handling of empty documents"""
@@ -629,7 +633,7 @@ class TestLangGraphWorkflowEdgeCases(unittest.TestCase):
                 # Add small delay to simulate processing
                 time.sleep(0.1)
                 
-                orchestrator = LangGraphWorkflowOrchestrator()
+                orchestrator = LangGraphOrchestrator()
                 results[session_id] = orchestrator.run_workflow(initial_state.to_dict())
         
         # Run multiple workflows concurrently

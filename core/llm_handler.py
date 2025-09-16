@@ -42,6 +42,15 @@ except ImportError:
     HAS_ANTHROPIC = False
     logging.warning("Anthropic not available. Install anthropic for Claude support.")
 
+# Mistral imports
+try:
+    from mistralai import Mistral
+    from mistralai import AssistantMessage, UserMessage
+    HAS_MISTRAL = True
+except ImportError:
+    HAS_MISTRAL = False
+    logging.warning("Mistral not available. Install mistralai for Mistral support.")
+
 from .chunking_processor import DocumentChunk, ChunkingResult
 from .config import LLMProvider
 
@@ -176,11 +185,11 @@ class LLMHandler:
                     api_key=self.config.api_key
                 )
                 logger.debug("Anthropic client initialized")
-            elif self.config.provider == LLMProvider.MISTRAL:
-                # For MISTRAL, we'll use the handler itself as the client
-                # since MISTRAL integration is handled through the handler
-                self._clients[LLMProvider.MISTRAL] = self
-                logger.debug("MISTRAL client initialized")
+            elif self.config.provider == LLMProvider.MISTRAL and HAS_MISTRAL:
+                self._clients[LLMProvider.MISTRAL] = Mistral(
+                    api_key=self.config.api_key
+                )
+                logger.debug("Mistral client initialized")
             else:
                 logger.warning(f"No client implementation for provider: {self.config.provider}")
             
@@ -402,6 +411,8 @@ class LLMHandler:
             return await self._call_openai(prompt, system_prompt, timeout)
         elif self.config.provider == LLMProvider.ANTHROPIC:
             return await self._call_anthropic(prompt, system_prompt, timeout)
+        elif self.config.provider == LLMProvider.MISTRAL:
+            return await self._call_mistral(prompt, system_prompt, timeout)
         else:
             raise LLMHandlerError(f"Provider {self.config.provider.name} not implemented")
     
@@ -473,7 +484,41 @@ class LLMHandler:
             
         except Exception as e:
             raise LLMHandlerError(f"Anthropic API call failed: {e}") from e
-    
+
+    async def _call_mistral(self, prompt: str, system_prompt: Optional[str], timeout: int) -> Dict[str, Any]:
+        """Make API call to Mistral."""
+        if not HAS_MISTRAL or LLMProvider.MISTRAL not in self._clients:
+            raise LLMHandlerError("Mistral client not available")
+
+        client = self._clients[LLMProvider.MISTRAL]
+
+        try:
+            # Prepare messages for Mistral
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
+
+            response = await asyncio.to_thread(
+                client.chat.complete,
+                model=self.config.model,
+                messages=messages,
+                temperature=self.config.temperature,
+                max_tokens=self.config.max_tokens or 1000
+            )
+
+            return {
+                "content": response.choices[0].message.content,
+                "usage": {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens
+                } if hasattr(response, 'usage') and response.usage else {}
+            }
+
+        except Exception as e:
+            raise LLMHandlerError(f"Mistral API call failed: {e}") from e
+
     def _format_prompt(self, request: ProcessingRequest) -> str:
         """Format prompt template with chunk content and context."""
         template_vars = {
