@@ -54,22 +54,22 @@ LANGCHAIN_CHUNK_CONFIG = {
 # LLM Configuration
 # LLM Configuration - Choose between local or API-based models
 LLM_CONFIG = {
-    "provider": "huggingface_local",  # Local Hugging Face models
-    "model": "mistralai/Mistral-7B-v0.3",  # MISTRAL model (registered access)
-    "api_key_env": None,  # No API key needed for local models
-    "max_tokens": 2048,  # Standard context window for Phi-3
+    "provider": "mistral",  # Switch to Mistral API
+    "model": "mistral-small-latest",  # Fastest Mistral chat model
+    "api_key_env": "MISTRAL_API_KEY",  # Read from environment/.env
+    "max_tokens": 2048,
     "temperature": 0.1,
-    "timeout": 300,  # Standard timeout for Phi-3
-    "device": "auto",  # Auto-detect best device (GPU if available, else CPU)
-    "local_model_path": "./models/llm",  # Use cached models from download script
-    "cache_folder": "./models",  # Use local models cache
-    # Optimized settings for MISTRAL
-    "torch_dtype": "float16",  # Optimized precision for MISTRAL
-    "device_map": "auto",  # Enable automatic device mapping
-    "load_in_8bit": True,  # Enable quantization for MISTRAL
-    "load_in_4bit": False,  # Keep 4-bit disabled for stability
-    "trust_remote_code": False,  # MISTRAL doesn't need custom code
-    "use_cache": True  # Enable KV cache for faster inference
+    "timeout": 60,
+    # Keep local-specific keys present to avoid KeyErrors in any callers that read them
+    "device": "auto",
+    "local_model_path": "./models/llm",
+    "cache_folder": "./models",
+    "torch_dtype": "float16",
+    "device_map": "auto",
+    "load_in_8bit": True,
+    "load_in_4bit": False,
+    "trust_remote_code": False,
+    "use_cache": True
 }
 
 # Alternative API-based configurations (uncomment to use):

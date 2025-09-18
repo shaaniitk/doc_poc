@@ -92,7 +92,19 @@ def main(source, source2=None, combine_strategy="smart", output_format="latex",
             'stage': stage,
             'remediate_orphans': remediate_orphans
         }
-        return asyncio.run(_run_langgraph_pipeline(args.source, config))
+        return asyncio.run(
+            _run_langgraph_pipeline(
+                source=source,
+                source2=source2,
+                combine_strategy=combine_strategy,
+                output_format=output_format,
+                template=template,
+                polishing=polishing,
+                run_analysis=run_analysis,
+                stage=stage,
+                remediate_orphans=remediate_orphans,
+            )
+        )
     else:
         if use_langgraph and not LANGGRAPH_AVAILABLE:
             log.warning("LangGraph requested but not available. Falling back to legacy mode.")
